@@ -1,0 +1,1122 @@
+@isTest
+private class Test_AssetLogic {
+    private static Date defaultStartDate = date.newInstance(system.today().year() - 2, 10, 1);
+    private static Date defaultEndDate = date.newInstance(system.today().year() - 1, 9, 30);
+    // By default, run all tests the day Membership Starts
+    private static Date defaultToday = defaultStartDate;
+
+    private static final string adultPrefix = 'adult';
+    private static final string girlPrefix = 'girl';
+    private static string adultWithNoMembershipsGlobalId = string.format('{0}0',
+        new List<string> {adultPrefix});
+
+    private static string adultWithMembershipsGlobalId = string.format('{0}1',
+        new List<string> {adultPrefix});
+    private static integer adultYearsForAdultAccountWithMemberships = 1;
+    private static integer girlYearsForAdultAccountWithMemberships = 2;
+    private static Date adultWithMembershipsLatestEndDate = defaultEndDate.addYears(1);
+    private static Date adultWithMembershipsGirlLatestEndDate = defaultEndDate;
+
+    private static string adultWithSingleMembershipGlobalId = string.format('{0}2',
+        new List<string> {adultPrefix});
+    private static Date adultWithSingleMembershipLatestEndDate = defaultEndDate;
+    
+    private static string girlWithNoMembershipsGlobalId = string.format('{0}0',
+        new List<string> {girlPrefix});
+
+    private static string girlWithMembershipGlobalId = string.format('{0}1',
+        new List<string> {girlPrefix});
+    private static integer girlYearsForGirlAccountWithMemberships = 2;
+    private static Date girlwithMembershipsLatestEndDate = defaultEndDate.addYears(-1);
+
+    private static string girlWithSingleMembershipGlobalId = string.format('{0}2',
+        new List<string> {girlPrefix});
+    private static Date girlWithSingleMembershipLatestEndDate = defaultEndDate;
+
+    private static string adultWithLifetimeMembershipGlobalId = string.format('{0}3',
+        new List<string> {adultPrefix});
+
+    @testSetup
+    private static void setupTestData() {
+        upsert TestUtils.getTriggerSettings();
+
+        Map<string, Id> recordTypeIdsByDeveloperName = 
+            RecordTypeCommon.GetRecordTypeIdsByDeveloperNames('account', 
+                new List<string> {PersonAccountRecordTypes.Youth, PersonAccountRecordTypes.Adult});
+
+        List<Individual> individuals = TestUtils.createIndividuals(7);
+
+        // Manually set Global Id so it's easy to reference in other tests
+        integer j = 0;
+        for (integer i = 0; i < individuals.size(); i++) {
+            
+            if(i<4){
+                individuals[i].GSUSA_Global_Id__c = string.format('{0}{1}',
+                    new List<object> {adultPrefix, i});
+            }
+            else{
+                individuals[i].GSUSA_Global_Id__c = string.format('{0}{1}',
+                    new List<object> {girlPrefix, j});
+                j++;
+            }
+        }
+
+        insert individuals;
+
+        List<Account> accounts = new List<Account>();
+        List<Account> adultAccounts = TestUtils.CreatePersonAccounts(new List<Individual>{individuals[0],individuals[1],individuals[2],individuals[3]},
+                                        recordTypeIdsByDeveloperName.get(PersonAccountRecordTypes.Adult));
+        
+        List<Account> girlAccounts = TestUtils.CreatePersonAccounts(new List<Individual>{individuals[4],individuals[5],individuals[6]}, 
+                                        recordTypeIdsByDeveloperName.get(PersonAccountRecordTypes.Youth));
+        
+        accounts.addAll(adultAccounts);
+        accounts.addAll(girlAccounts);
+
+        insert accounts;
+
+        List<Product2> products = TestUtils.createProducts(4);
+        products[0].Family = ProductFamilies.Membership;
+        products[0].Product_Subfamily__c = ProductSubfamilies.GirlMembership;
+
+        products[1].Family = ProductFamilies.Membership;
+        products[1].Product_Subfamily__c = ProductSubfamilies.AdultMembership;
+        
+        products[2].Family = ProductFamilies.Membership;
+        products[2].Product_Subfamily__c = ProductSubfamilies.NonMembershipProduct;
+
+        products[3].Family = ProductFamilies.Membership;
+        products[3].Product_Subfamily__c = ProductSubfamilies.Lifetime;
+
+        insert products;
+
+        List<Asset> memberships = new List<Asset>();
+        memberships.add(setupMembership(adultAccounts[1].Id, products[1].Id, '1 Year',
+            defaultStartDate.addYears(1), adultWithMembershipsLatestEndDate));
+        memberships.add(setupMembership(adultAccounts[1].Id, products[1].Id, '1 Year',
+            defaultStartDate.addYears(1), adultWithMembershipsLatestEndDate));
+
+        memberships.add(setupMembership(adultAccounts[1].Id, products[0].Id, '1 Year'));
+        memberships.add(setupMembership(adultAccounts[1].Id, products[0].Id, '1 Year',
+            defaultStartDate.addYears(-2).addMonths(-6), defaultEndDate.addYears(-2)));
+
+        memberships.add(setupMembership(girlAccounts[1].Id, products[0].Id, '1 Year',
+            defaultStartDate.addYears(-1), girlwithMembershipsLatestEndDate));
+        memberships.add(setupMembership(girlAccounts[1].Id, products[0].Id, '1 Year',
+            defaultStartDate.addYears(-1), girlwithMembershipsLatestEndDate));
+        memberships.add(setupMembership(girlAccounts[1].Id, products[0].Id, '1 Year',
+            defaultStartDate.addYears(-2), defaultEndDate.addYears(-2)));
+
+        memberships.add(setupMembership(adultAccounts[2].Id, products[1].Id, '1 Year'));
+        memberships.add(setupMembership(girlAccounts[2].Id, products[0].Id, '1 Year'));
+
+        Id nullId = null;
+        memberships.add(setupMembership(adultAccounts[2].Id, nullId, '1 Year'));
+
+        memberships.add(setupMembership(adultAccounts[3].Id, products[3].Id, 'Lifetime',
+            defaultStartDate.addYears(3), null));
+
+        insert memberships;
+        
+        // Insert Integration Settings after inserting Members to avoid kicking off the integration.
+        insert TestUtils.getIntegrationSettings();
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Insert_DisabledTrigger() {
+        Trigger_Settings__c triggerSettings = Trigger_Settings__c.getInstance();
+        triggerSettings.Asset__c = false;
+        update triggerSettings;
+
+        runSimpleInsertTest(adultWithNoMembershipsGlobalId, ProductSubfamilies.AdultMembership, '1 Year', null,
+            null, null, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Insert_AddAdultMembership() {
+        runSimpleInsertTest(adultWithNoMembershipsGlobalId, ProductSubfamilies.AdultMembership, '1 Year', 0, 1,
+            false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Insert_AddAdditionalAdultMembershipt() {
+        runSimpleInsertTest(adultWithSingleMembershipGlobalId, ProductSubfamilies.AdultMembership, '1 Year',
+            defaultStartDate.addYears(-1), defaultEndDate.addYears(-1), 0, 2,
+            adultWithSingleMembershipLatestEndDate, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Insert_AddAdultMembershipFutureYear() {
+        runSimpleInsertTest(adultWithNoMembershipsGlobalId, ProductSubfamilies.AdultMembership, '1 Year',
+            defaultStartDate.addYears(1), defaultEndDate.addYears(1), 0, 1, 
+            defaultEndDate.addYears(1), false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Insert_AddAdultMembershipMidYear() {
+        runSimpleInsertTest(adultWithNoMembershipsGlobalId, ProductSubfamilies.AdultMembership, '1 Year',
+            defaultStartDate.addMonths(5), defaultEndDate.addMonths(-1), 0, 1,
+            defaultEndDate.addMonths(-1), false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Insert_AddAdultMembershipTwoYears() {
+        runSimpleInsertTest(adultWithNoMembershipsGlobalId, ProductSubfamilies.AdultMembership, '1 Year',
+            defaultStartDate, defaultEndDate.addYears(1), 0, 1, defaultEndDate.addYears(1), false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Insert_AddAdultExtendedMembershipOneYears() {
+        runSimpleInsertTest(adultWithNoMembershipsGlobalId, ProductSubfamilies.AdultMembership, 'Extended Year',
+            0, 1, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Insert_AddAdultExtendedMembershipTwoYears() {
+        runSimpleInsertTest(adultWithNoMembershipsGlobalId, ProductSubfamilies.AdultMembership, 'Extended Year',
+            defaultStartDate.addMonths(-6), defaultEndDate, 0, 2, defaultEndDate, false);
+    }
+    
+    @isTest
+    private static void Test_AssetLogic_Insert_AddAdultExtendedMembershipThreeYears() {
+        runSimpleInsertTest(adultWithNoMembershipsGlobalId, ProductSubfamilies.AdultMembership, 'Extended Year',
+            defaultStartDate.addMonths(-6), defaultEndDate.addYears(1), 0, 2, defaultEndDate.addYears(1),
+            false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Insert_AddGirlMembership() {
+        runSimpleInsertTest(girlWithNoMembershipsGlobalId, ProductSubfamilies.GirlMembership, '1 Year', 1, 0,
+            false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Insert_AddAdditionalGirlMembership() {
+        runSimpleInsertTest(girlWithSingleMembershipGlobalId, ProductSubfamilies.GirlMembership, '1 Year',
+            defaultStartDate.addYears(-1), defaultEndDate.addYears(-1), 2, 0,
+            girlWithSingleMembershipLatestEndDate, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Insert_AddGirlMembershipFutureYear() {
+        runSimpleInsertTest(girlWithNoMembershipsGlobalId, ProductSubfamilies.GirlMembership, '1 Year',
+            defaultStartDate.addYears(1), defaultEndDate.addYears(1), 1, 0,
+            defaultEndDate.addYears(1), false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Insert_AddGirlMembershipMidYear() {
+        runSimpleInsertTest(girlWithNoMembershipsGlobalId, ProductSubfamilies.GirlMembership, '1 Year',
+            defaultStartDate.addMonths(5), defaultEndDate.addMonths(-1), 1, 0,
+            defaultEndDate.addMonths(-1), false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Insert_AddGirlMembershipTwoYears() {
+        runSimpleInsertTest(girlWithNoMembershipsGlobalId, ProductSubfamilies.GirlMembership, '1 Year',
+            defaultStartDate, defaultEndDate.addYears(1), 1, 0, defaultEndDate.addYears(1), false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Insert_AddGirlExtendedMembershipOneYear() {
+        runSimpleInsertTest(girlWithNoMembershipsGlobalId, ProductSubfamilies.GirlMembership,
+            'Extended Year', 1, 0, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Insert_AddGirlExtendedMembershipTwoYears() {
+        runSimpleInsertTest(girlWithNoMembershipsGlobalId, ProductSubfamilies.GirlMembership,
+            'Extended Year', defaultStartDate.addMonths(-6), defaultEndDate, 2, 0,
+            defaultEndDate, false);
+    }
+    
+    @isTest
+    private static void Test_AssetLogic_Insert_AddGirlExtendedMembershipThreeYears() {
+        runSimpleInsertTest(girlWithNoMembershipsGlobalId, ProductSubfamilies.GirlMembership,
+            'Extended Year', defaultStartDate.addMonths(-6), defaultEndDate.addYears(1), 2, 0,
+            defaultEndDate.addYears(1), false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Insert_AddLifetimeMembershipAlreadyStarted() {
+        runSimpleInsertTest(adultWithNoMembershipsGlobalId, ProductSubfamilies.Lifetime, 'Lifetime',
+            defaultStartDate, null, 0, 1, null, true);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Insert_AddLifetimeMembershipNotStarted() {
+        runSimpleInsertTest(adultWithNoMembershipsGlobalId, ProductSubfamilies.Lifetime, 'Lifetime',
+            defaultStartDate.addYears(1), null, 0, 0, null, true);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Insert_AddLifetimeMembershipWithEndDate() {
+        runSimpleInsertTest(adultWithNoMembershipsGlobalId, ProductSubfamilies.Lifetime, 'Lifetime',
+            defaultStartDate, defaultEndDate, 0, 1, defaultEndDate, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Insert_AddMembershipNoAccount() {
+        Asset membership = TestUtils.createMembership(null);
+        Contact contact = [SELECT Id, AccountId
+                            FROM Contact
+                            WHERE Account.PersonIndividual.GSUSA_Global_Id__c =: adultWithNoMembershipsGlobalId
+                            LIMIT 1];
+                            
+        membership.ContactId = contact.Id;
+        membership.Product2Id = [SELECT Id
+                                FROM Product2
+                                WHERE Product_Subfamily__c =: ProductSubfamilies.AdultMembership
+                                LIMIT 1].Id;
+        membership.Type__c = '1 Year';
+
+        testInsertWithOverwrittenToday(membership);
+
+        assertMembershipYears(contact.AccountId, null, null, null, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Insert_AddMembershipNonMembershipProduct() {
+        Account account = retrieveAccountByGlobalId(adultWithNoMembershipsGlobalId);
+        Asset membership = setupMembership(account.Id, ProductSubfamilies.NonMembershipProduct, '1 Year');
+
+        testInsertWithOverwrittenToday(membership);
+        assertMembershipYears(account.Id, 0, 0, null, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Insert_AddMembershipNoProduct() {
+        Account account = retrieveAccountByGlobalId(adultWithNoMembershipsGlobalId);
+        Id productId = null;
+        Asset membership = setupMembership(account.Id, productId, '1 Year');
+
+        testInsertWithOverwrittenToday(membership);
+        assertMembershipYears(account.Id, null, null, null, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Insert_AddMembershipNoType() {
+        // Null Types are treated as 1 Year Memberships
+        runSimpleInsertTest(adultWithNoMembershipsGlobalId, ProductSubfamilies.AdultMembership, null, 0, 1,
+            false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Insert_AddMembershipNoStartDate() {
+        runSimpleInsertTest(adultWithNoMembershipsGlobalId, ProductSubfamilies.AdultMembership, '1 Year', null,
+            defaultEndDate, null, null, null, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Insert_AddMembershipNoEndDate() {
+        runSimpleInsertTest(adultWithNoMembershipsGlobalId, ProductSubfamilies.AdultMembership, '1 Year', defaultStartDate,
+            null, 0, 1, null, false);
+    }
+
+    // THis test may be valid for historical data
+    @isTest
+    private static void Test_AssetLogic_Insert_AddGirlMembershipToAdult() {
+        runSimpleInsertTest(adultWithNoMembershipsGlobalId, ProductSubfamilies.GirlMembership, '1 Year', 1, 0, false);
+    }
+
+    // This test probably isn't valid, but it's just here to confirm expected results
+    @isTest
+    private static void Test_AssetLogic_Insert_AddAdultMembershipToGirl() {
+        runSimpleInsertTest(girlWithNoMembershipsGlobalId, ProductSubfamilies.AdultMembership, '1 Year', 0, 1, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Insert_AddGirlLifetimeMembershipToGirl() {
+        runSimpleInsertTest(girlWithNoMembershipsGlobalId, ProductSubfamilies.GirlMembership,
+            'Lifetime', 1, 0, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Insert_AddAdultLifetimeMembershipToAdult() {
+        runSimpleInsertTest(girlWithNoMembershipsGlobalId, ProductSubfamilies.AdultMembership,
+            'Lifetime', 0, 1, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Insert_MultipleMemberships() {
+        Account girlAccount;
+        Account adultAccount;
+        for (Account account : [SELECT Id, PersonContactId, PersonIndividual.GSUSA_Global_Id__c
+                                FROM Account
+                                WHERE PersonIndividual.GSUSA_Global_Id__c =: adultWithNoMembershipsGlobalId
+                                OR PersonIndividual.GSUSA_Global_Id__c =: girlWithNoMembershipsGlobalId
+                                LIMIT 2]) {
+            if (account.PersonIndividual.GSUSA_Global_Id__c == adultWithNoMembershipsGlobalId) {
+                adultAccount = account;
+            }
+            else {
+                girlAccount = account;
+            }
+        }
+
+        Id adultProductId;
+        Id girlProductId;
+        Id lifetimeMembershipProductId;
+        Id nonMembershipProductId;
+        for (Product2 product : [SELECT Id, Product_Subfamily__c
+                                 FROM Product2]) {
+            if (product.Product_Subfamily__c == ProductSubfamilies.AdultMembership) {
+                adultProductId = product.Id;
+            }
+            else if (product.Product_Subfamily__c == ProductSubfamilies.GirlMembership) {
+                girlProductId = product.Id;
+            }
+            else if (product.Product_Subfamily__c == ProductSubfamilies.Lifetime) {
+                lifetimeMembershipProductId = product.Id;
+            }
+            else {
+                nonMembershipProductId = product.Id;
+            }
+        }
+
+        List<Asset> memberships = new List<Asset>();
+        memberships.add(setupMembership(adultAccount.Id, adultProductId, '1 Year'));
+        memberships.add(setupMembership(adultAccount.Id, adultProductId, 'Extended Year',
+            defaultStartDate.addYears(-1).addMonths(-6), defaultEndDate.addYears(-1)));
+        memberships.add(setupMembership(adultAccount.Id, lifetimeMembershipProductId, 'Lifetime',
+            defaultStartDate.addYears(1), null));
+        
+        memberships.add(setupMembership(adultAccount.Id, girlProductId, 'Extended Year',
+            defaultStartDate.addYears(-2).addMonths(-6), defaultEndDate.addYears(-2)));
+        memberships.add(setupMembership(adultAccount.Id, girlProductId, '1 Year',
+            defaultStartDate.addYears(-2).addMonths(1), defaultEndDate.addYears(-2).addMonths(-1)));
+
+        memberships.add(setupMembership(girlAccount.Id, girlProductId, '1 Year'));
+        memberships.add(setupMembership(girlAccount.Id, girlProductId, 'Extended Year',
+            defaultStartDate.addYears(-1).addMonths(-6), defaultEndDate.addYears(-1)));
+        memberships.add(setupMembership(girlAccount.Id, girlProductId, '1 Year',
+            defaultStartDate.addYears(-2), defaultEndDate.addYears(-2)));
+        memberships.add(setupMembership(girlAccount.Id, girlProductId, '1 Year',
+            defaultStartDate.addYears(-3), defaultEndDate.addYears(-3)));
+        
+        memberships.add(setupMembership(adultAccount.Id, nonMembershipProductId, '1 Year',
+            defaultStartDate.addYears(-3), defaultEndDate.addYears(-3)));
+
+        Asset nonAccountMembership = TestUtils.createMembership(null);
+        nonAccountMembership.ContactId = adultAccount.PersonContactId;
+        nonAccountMembership.Product2Id = adultProductId;
+        nonAccountMembership.Type__c = '1 Year';
+        memberships.add(nonAccountMembership);
+
+        testInsertWithOverwrittenToday(memberships);
+
+        assertMembershipYears(new Map<Id, integer> {
+            adultAccount.Id => 2,
+            girlAccount.Id => 4
+        }, new Map<Id, integer> {
+            adultAccount.Id => 3,
+            girlAccount.Id => 0
+        }, new Map<Id, Date> {
+            adultAccount.Id => defaultEndDate,
+            girlAccount.Id => defaultEndDate
+        }, new Map<Id, boolean> {
+            adultAccount.Id => true,
+            girlAccount.Id => false
+        });
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Update_ChangeAccountGirlMembership() {
+        runSimpleUpdateAccountTest(adultWithMembershipsGlobalId, girlWithNoMembershipsGlobalId,
+            ProductSubfamilies.GirlMembership, girlYearsForAdultAccountWithMemberships - 1,
+            adultYearsForAdultAccountWithMemberships, 1, 0, adultWithMembershipsLatestEndDate,
+            adultWithMembershipsGirlLatestEndDate, false, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Update_ChangeAccountAdultMembership() {
+        // adultWithMembershipsGlobalId has a duplicate Membership, so it's expected value is hardcoded
+        runSimpleUpdateAccountTest(adultWithMembershipsGlobalId, adultWithNoMembershipsGlobalId,
+            ProductSubfamilies.AdultMembership, girlYearsForAdultAccountWithMemberships,
+            1, 0, 1, adultWithMembershipsLatestEndDate, adultWithMembershipsLatestEndDate,
+            false, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Update_ChangeAccountAdultMembership_AddToCountAndClear() {
+        runSimpleUpdateAccountTest(adultWithSingleMembershipGlobalId, adultWithMembershipsGlobalId,
+            ProductSubfamilies.AdultMembership, 0, 0, girlYearsForAdultAccountWithMemberships,
+            adultYearsForAdultAccountWithMemberships + 1, null, adultWithMembershipsLatestEndDate,
+            false, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Update_ChangeAccountGirlMembership_AddToCountAndClear() {
+        runSimpleUpdateAccountTest(girlWithSingleMembershipGlobalId, girlWithMembershipGlobalId,
+            ProductSubfamilies.GirlMembership, 0, 0, girlYearsForGirlAccountWithMemberships + 1,
+            0, null, girlWithSingleMembershipLatestEndDate, false, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Update_ChangeAccountToContact() {
+        Asset membership = [SELECT Id, AccountId, Account.PersonContactId
+                            FROM Asset
+                            WHERE Account.PersonIndividual.GSUSA_Global_Id__c =: adultWithSingleMembershipGlobalId
+                            AND Product2.Product_Subfamily__c =: ProductSubfamilies.AdultMembership
+                            AND Type__c = '1 Year'
+                            LIMIT 1];
+        
+        testUpdateWithOverwrittenToday(new Asset(
+            Id = membership.Id,
+            AccountId = null,
+            ContactId = membership.Account.PersonContactId
+        ));
+
+        assertMembershipYears(membership.AccountId, 0, 0, null, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Update_ChangeAdultProductToGirlProduct() {
+        runSimpleUpdateProductTest(ProductSubfamilies.AdultMembership, adultWithSingleMembershipGlobalId,
+            ProductSubfamilies.GirlMembership, 1, 0, adultWithSingleMembershipLatestEndDate, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Update_ChangeGirlProductToAdultProduct() {
+        runSimpleUpdateProductTest(ProductSubfamilies.GirlMembership, adultWithMembershipsGlobalId,
+            ProductSubfamilies.AdultMembership, girlYearsForAdultAccountWithMemberships - 1,
+            adultYearsForAdultAccountWithMemberships + 1, adultWithMembershipsLatestEndDate, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Update_ChangeMembershipProductToNonMembershipProduct() {
+        runSimpleUpdateProductTest(ProductSubfamilies.AdultMembership, adultWithSingleMembershipGlobalId,
+            ProductSubfamilies.NonMembershipProduct, 0, 0, null, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Update_ClearProduct() {
+        Asset membership = [SELECT Id, AccountId
+                            FROM Asset
+                            WHERE Product2.Product_Subfamily__c =: ProductSubfamilies.GirlMembership
+                            AND Account.PersonIndividual.GSUSA_Global_Id__c =: girlWithSingleMembershipGlobalId
+                            AND Type__c = '1 Year'
+                            LIMIT 1];
+
+        membership.Product2Id = null;
+
+        testUpdateWithOverwrittenToday(membership);
+
+        assertMembershipYears(membership.AccountId, 0, 0, null, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Update_SetProductFromBlank() {
+        Asset membership = [SELECT Id, AccountId
+                            FROM Asset
+                            WHERE Product2Id = null
+                            AND Account.PersonIndividual.GSUSA_Global_Id__c =: adultWithSingleMembershipGlobalId
+                            AND Type__c = '1 Year'
+                            LIMIT 1];
+
+        membership.Product2Id = [SELECT Id
+                                 FROM Product2
+                                 WHERE Product_Subfamily__c =: ProductSubfamilies.GirlMembership
+                                 LIMIT 1].Id;
+
+        testUpdateWithOverwrittenToday(membership);
+
+        assertMembershipYears(membership.AccountId, 1, 1, adultWithSingleMembershipLatestEndDate,
+            false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Update_ChangeStartDate_IncreaseCount() {
+        Asset membership = [SELECT Id, AccountId
+                            FROM Asset
+                            WHERE Account.PersonIndividual.GSUSA_Global_Id__c =: adultWithMembershipsGlobalId
+                            AND Product2.Product_Subfamily__c =: ProductSubfamilies.AdultMembership
+                            LIMIT 1];
+        
+        membership.InstallDate = defaultStartDate.addYears(-1);
+
+        testUpdateWithOverwrittenToday(membership);
+
+        assertMembershipYears(membership.AccountId, girlYearsForAdultAccountWithMemberships,
+            adultYearsForAdultAccountWithMemberships + 1, adultWithMembershipsLatestEndDate, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Update_ClearStartDate_DecreaseCount() {
+        Asset membership = [SELECT Id, AccountId
+                            FROM Asset
+                            WHERE Account.PersonIndividual.GSUSA_Global_Id__c =: adultWithSingleMembershipGlobalId
+                            AND Product2.Product_Subfamily__c =: ProductSubfamilies.AdultMembership
+                            LIMIT 1];
+        
+        membership.InstallDate = null;
+
+        testUpdateWithOverwrittenToday(membership);
+
+        assertMembershipYears(membership.AccountId, 0, 0, null, false);
+    }
+
+    // Clearing the End Date of an Account will leave the count as is
+    @isTest
+    private static void Test_AssetLogic_Update_ClearEndDate_NoCountChange() {
+        Asset membership = [SELECT Id, AccountId
+                            FROM Asset
+                            WHERE Account.PersonIndividual.GSUSA_Global_Id__c =: girlWithSingleMembershipGlobalId
+                            AND Product2.Product_Subfamily__c =: ProductSubfamilies.GirlMembership
+                            LIMIT 1];
+        
+        membership.UsageEndDate = null;
+
+        testUpdateWithOverwrittenToday(membership);
+
+        assertMembershipYears(membership.AccountId, 1, 0, null, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Update_ChangeTypeToExtended_IncreaseCount() {
+        Asset membership = [SELECT Id, AccountId
+                            FROM Asset
+                            WHERE InstallDate =: defaultStartDate.addYears(-2).addMonths(-6)
+                            AND UsageEndDate =: defaultEndDate.addYears(-2)
+                            AND Account.PersonIndividual.GSUSA_Global_Id__c =: adultWithMembershipsGlobalId
+                            AND Product2.Product_Subfamily__c =: ProductSubfamilies.GirlMembership
+                            AND Type__c = '1 Year'
+                            LIMIT 1];
+
+        membership.Type__c = 'Extended Year';
+
+        testUpdateWithOverwrittenToday(membership);
+        assertMembershipYears(membership.AccountId, girlYearsForAdultAccountWithMemberships + 1,
+            adultYearsForAdultAccountWithMemberships, adultWithMembershipsLatestEndDate, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Update_ChangeTypeToLifetime_DecreaseCount() {
+        List<Asset> memberships = [SELECT Id, AccountId
+                                   FROM Asset
+                                   WHERE Account.PersonIndividual.GSUSA_Global_Id__c =: adultWithMembershipsGlobalId
+                                   AND Product2.Product_Subfamily__c =: ProductSubfamilies.AdultMembership
+                                   AND Type__c = '1 Year'];
+        
+        for (Asset membership : memberships) {
+            membership.Type__c = 'Lifetime';
+        }
+
+        testUpdateWithOverwrittenToday(memberships);
+        assertMembershipYears(memberships[0].AccountId, girlYearsForAdultAccountWithMemberships,
+            0, adultWithMembershipsLatestEndDate, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Update_ChangeTypeTo1YearFromLifetime_IncreaseCount() {
+        List<Asset> memberships = [SELECT Id, AccountId
+                                   FROM Asset
+                                   WHERE Account.PersonIndividual.GSUSA_Global_Id__c =: adultWithLifetimeMembershipGlobalId
+                                   AND Type__c = 'Lifetime'];
+        
+        for (Asset membership : memberships) {
+            membership.Type__c = '1 Year';
+        }
+
+        testUpdateWithOverwrittenToday(memberships);
+        assertMembershipYears(memberships[0].AccountId, 0,
+            1, null, true);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Update_SetEndDateOnLifetimeMembership() {
+        List<Asset> memberships = [SELECT Id, AccountId
+                                   FROM Asset
+                                   WHERE Account.GSUSA_Global_Id__c =: adultWithLifetimeMembershipGlobalId
+                                   AND Type__c = 'Lifetime'];
+        
+        for (Asset membership : memberships) {
+            membership.UsageEndDate = defaultEndDate;
+        }
+
+        testUpdateWithOverwrittenToday(memberships);
+        assertMembershipYears(memberships[0].AccountId, 0,
+            0, defaultEndDate, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Update_UpdateFieldNoChangeToMemberships() {
+        Asset membership = [SELECT Id, AccountId
+                            FROM Asset
+                            WHERE Account.PersonIndividual.GSUSA_Global_Id__c =: adultWithMembershipsGlobalId
+                            LIMIT 1];
+
+        membership.Quantity = 1;
+        testUpdateWithOverwrittenToday(membership);
+        assertMembershipYears(membership.AccountId, girlYearsForAdultAccountWithMemberships,
+            adultYearsForAdultAccountWithMemberships, adultWithMembershipsLatestEndDate, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Update_UpdateMultipleMemberships() {
+        Map<string, List<Asset>> assetsByGlobalId = new Map<string, List<Asset>>();
+        Map<string, Id> accountIdByGlobalId = new Map<string, Id>();
+        for (Asset asset : [SELECT Id, Account.PersonIndividual.GSUSA_Global_Id__c, AccountId, InstallDate, UsageEndDate,
+                                   Product2.Product_Subfamily__c
+                            FROM Asset]) {
+            string globalId = asset.Account.PersonIndividual.GSUSA_Global_Id__c;
+            if (assetsByGlobalId.containsKey(globalId) == false) {
+                assetsByGlobalId.put(globalId, new List<Asset>());
+            }
+
+            assetsByGlobalId.get(globalId).add(asset);
+            accountIdByGlobalId.put(globalId, asset.AccountId);
+        }
+
+        Id lifetimeProductId = [SELECT Id 
+                                FROM Product2
+                                WHERE Product_Subfamily__c =: ProductSubfamilies.Lifetime
+                                LIMIT 1].Id;
+
+        List<Asset> updateMemberships = new List<Asset>();
+        for (Asset asset : assetsByGlobalId.get(adultWithMembershipsGlobalId)) {
+            if (asset.Product2.Product_Subfamily__c == ProductSubfamilies.AdultMembership) {
+                updateMemberships.add(new Asset(
+                    Id = asset.Id,
+                    Type__c = 'Lifetime',
+                    Product2Id = lifetimeProductId,
+                    UsageEndDate = null
+                ));
+            }
+        }
+        
+        boolean updatedGirlMembershipOnce = false;
+        for (Asset asset : assetsByGlobalId.get(girlWithMembershipGlobalId)) {
+            if (updatedGirlMembershipOnce == false &&
+                asset.InstallDate == defaultStartDate.addYears(-1)) {
+                updatedGirlMembershipOnce = true;
+                updateMemberships.add(new Asset(
+                    Id = asset.Id,
+                    InstallDate = defaultStartDate,
+                    UsageEndDate = defaultEndDate
+                ));
+            }
+        }
+
+        for (Asset asset : assetsByGlobalId.get(adultWithSingleMembershipGlobalId)) {
+            updateMemberships.add(new Asset(
+                Id = asset.Id,
+                Product2Id = null
+            ));
+        }
+
+        for (Asset asset : assetsByGlobalId.get(girlWithSingleMembershipGlobalId)) {
+            updateMemberships.add(new Asset(
+                Id = asset.Id,
+                Product2Id = null
+            ));
+        }
+
+        testUpdateWithOverwrittenToday(updateMemberships);
+        assertMembershipYears(new Map<Id, integer> {
+            accountIdByGlobalId.get(adultWithMembershipsGlobalId) => girlYearsForAdultAccountWithMemberships,
+            accountIdByGlobalId.get(girlWithMembershipGlobalId) => girlYearsForGirlAccountWithMemberships + 1,
+            accountIdByGlobalId.get(adultWithSingleMembershipGlobalId) => 0,
+            accountIdByGlobalId.get(girlWithSingleMembershipGlobalId) => 0
+        }, new Map<Id, integer> {
+            accountIdByGlobalId.get(adultWithMembershipsGlobalId) => 0,
+            accountIdByGlobalId.get(girlWithMembershipGlobalId) => 0,
+            accountIdByGlobalId.get(adultWithSingleMembershipGlobalId) => 0,
+            accountIdByGlobalId.get(girlWithSingleMembershipGlobalId) => 0
+        }, new Map<Id, Date> {
+            accountIdByGlobalId.get(adultWithMembershipsGlobalId) => defaultEndDate,
+            accountIdByGlobalId.get(girlWithMembershipGlobalId) => defaultEndDate,
+            accountIdByGlobalId.get(adultWithSingleMembershipGlobalId) => null,
+            accountIdByGlobalId.get(girlWithSingleMembershipGlobalId) => null
+        }, new Map<Id, Boolean> {
+            accountIdByGlobalId.get(adultWithMembershipsGlobalId) => true,
+            accountIdByGlobalId.get(girlWithMembershipGlobalId) => false,
+            accountIdByGlobalId.get(adultWithSingleMembershipGlobalId) => false,
+            accountIdByGlobalId.get(girlWithSingleMembershipGlobalId) => false
+        });
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Delete_DecreaseYearsAsAdultCount_ClearMembershipEndDate() {
+        Asset membership = [SELECT Id, AccountId
+                            FROM Asset
+                            WHERE Product2.Product_Subfamily__c =: ProductSubfamilies.AdultMembership
+                            AND Account.PersonIndividual.GSUSA_Global_Id__c =: adultWithSingleMembershipGlobalId
+                            LIMIT 1];
+
+        testDeleteWithOverwrittenToday(membership);
+        assertMembershipYears(membership.AccountId, 0, 0, null, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Delete_DecreaseYearsAsGirlCount_NoChangeToMembershipEndDate() {
+        Asset membership = [SELECT Id, AccountId
+                            FROM Asset
+                            WHERE Product2.Product_Subfamily__c =: ProductSubfamilies.GirlMembership
+                            AND Account.PersonIndividual.GSUSA_Global_Id__c =: adultWithMembershipsGlobalId
+                            AND InstallDate =: defaultStartDate
+                            AND UsageEndDate =: defaultEndDate
+                            LIMIT 1];
+
+        testDeleteWithOverwrittenToday(membership);
+        assertMembershipYears(membership.AccountId, girlYearsForAdultAccountWithMemberships - 1,
+            adultYearsForAdultAccountWithMemberships, adultWithMembershipsLatestEndDate, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Delete_LifetimeMembership() {
+         Asset membership = [SELECT Id, AccountId
+                            FROM Asset
+                            WHERE Account.PersonIndividual.GSUSA_Global_Id__c =: adultWithLifetimeMembershipGlobalId
+                            AND Type__c = 'Lifetime'
+                            LIMIT 1];
+
+        testDeleteWithOverwrittenToday(membership);
+        assertMembershipYears(membership.AccountId, 0, 0, null, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Delete_DeleteMultiples() {
+        Map<string, Id> accountIdByGlobalId = new Map<string, Id>();
+        for (Account account : [SELECT Id, PersonIndividual.GSUSA_Global_Id__c
+                                FROM Account
+                                WHERE PersonIndividual.GSUSA_Global_Id__c not in: new List<string> {adultWithNoMembershipsGlobalId, girlWithNoMembershipsGlobalId}]) {
+            accountIdByGlobalId.put(account.PersonIndividual.GSUSA_Global_Id__c, account.Id);
+        }
+
+        List<Asset> memberships = [SELECT Id
+                                   FROM Asset
+                                   WHERE ((AccountId =: accountIdByGlobalId.get(adultWithMembershipsGlobalId)
+                                        AND Product2.Product_SubFamily__c =: ProductSubfamilies.GirlMembership
+                                        AND InstallDate =: defaultStartDate)
+                                    OR (AccountId =: accountIdByGlobalId.get(girlWithMembershipGlobalId)
+                                        AND Product2.Product_SubFamily__c =: ProductSubfamilies.GirlMembership
+                                        AND InstallDate =: defaultStartDate.addYears(-2))
+                                    OR (AccountId in: new List<Id> {
+                                        accountIdByGlobalId.get(girlWithSingleMembershipGlobalId),
+                                        accountIdByGlobalId.get(adultWithSingleMembershipGlobalId)
+                                    }))];
+        
+        testDeleteWithOverwrittenToday(memberships);
+        assertMembershipYears(new Map<Id, integer> {
+            accountIdByGlobalId.get(adultWithMembershipsGlobalId) => girlYearsForAdultAccountWithMemberships - 1,
+            accountIdByGlobalId.get(girlWithMembershipGlobalId) => girlYearsForGirlAccountWithMemberships - 1,
+            accountIdByGlobalId.get(girlWithSingleMembershipGlobalId) => 0,
+            accountIdByGlobalId.get(adultWithSingleMembershipGlobalId) => 0
+        }, new Map<Id, integer> {
+            accountIdByGlobalId.get(adultWithMembershipsGlobalId) => adultYearsForAdultAccountWithMemberships,
+            accountIdByGlobalId.get(girlWithMembershipGlobalId) => 0,
+            accountIdByGlobalId.get(girlWithSingleMembershipGlobalId) => 0,
+            accountIdByGlobalId.get(adultWithSingleMembershipGlobalId) => 0
+        }, new Map<Id, Date> {
+            accountIdByGlobalId.get(adultWithMembershipsGlobalId) => adultWithMembershipsLatestEndDate,
+            accountIdByGlobalId.get(girlWithMembershipGlobalId) => girlwithMembershipsLatestEndDate,
+            accountIdByGlobalId.get(girlWithSingleMembershipGlobalId) => null,
+            accountIdByGlobalId.get(adultWithSingleMembershipGlobalId) => null
+        }, new Map<Id, Boolean> {
+            accountIdByGlobalId.get(adultWithMembershipsGlobalId) => false,
+            accountIdByGlobalId.get(girlWithMembershipGlobalId) => false,
+            accountIdByGlobalId.get(girlWithSingleMembershipGlobalId) => false,
+            accountIdByGlobalId.get(adultWithSingleMembershipGlobalId) => false
+        });
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Undelete_IncreaseYearsAsAdultCount() {
+        Asset membership = [SELECT Id, AccountId
+                            FROM Asset
+                            WHERE Product2.Product_Subfamily__c =: ProductSubfamilies.AdultMembership
+                            AND Account.PersonIndividual.GSUSA_Global_Id__c =: adultWithSingleMembershipGlobalId
+                            LIMIT 1];
+
+        testUndeleteWithOverwrittenToday(membership);
+        assertMembershipYears(membership.AccountId, 0, 1,
+            adultWithSingleMembershipLatestEndDate, false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Undelete_IncreaseYearsAsGirlCount() {
+        Asset membership = [SELECT Id, AccountId
+                            FROM Asset
+                            WHERE Product2.Product_Subfamily__c =: ProductSubfamilies.GirlMembership
+                            AND Account.PersonIndividual.GSUSA_Global_Id__c =: adultWithMembershipsGlobalId
+                            AND InstallDate =: defaultStartDate
+                            AND UsageEndDate =: defaultEndDate
+                            LIMIT 1];
+
+        testUndeleteWithOverwrittenToday(membership);
+        assertMembershipYears(membership.AccountId, girlYearsForAdultAccountWithMemberships,
+            adultYearsForAdultAccountWithMemberships, adultWithMembershipsLatestEndDate,
+            false);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Undelete_LifetimeMembership() {
+         Asset membership = [SELECT Id, AccountId
+                            FROM Asset
+                            WHERE Account.PersonIndividual.GSUSA_Global_Id__c =: adultWithLifetimeMembershipGlobalId
+                            AND Type__c = 'Lifetime'
+                            LIMIT 1];
+
+        testUndeleteWithOverwrittenToday(membership);
+        assertMembershipYears(membership.AccountId, 0, 0, null, true);
+    }
+
+    @isTest
+    private static void Test_AssetLogic_Undelete_UndeleteMultiples() {
+        Map<string, Id> accountIdByGlobalId = new Map<string, Id>();
+        for (Account account : [SELECT Id, PersonIndividual.GSUSA_Global_Id__c
+                                FROM Account
+                                WHERE PersonIndividual.GSUSA_Global_Id__c not in: new List<string> {adultWithNoMembershipsGlobalId, girlWithNoMembershipsGlobalId}]) {
+            accountIdByGlobalId.put(account.PersonIndividual.GSUSA_Global_Id__c, account.Id);
+        }
+
+        List<Asset> memberships = [SELECT Id
+                                   FROM Asset
+                                   WHERE ((AccountId =: accountIdByGlobalId.get(adultWithMembershipsGlobalId)
+                                        AND Product2.Product_SubFamily__c =: ProductSubfamilies.GirlMembership
+                                        AND InstallDate =: defaultStartDate)
+                                    OR (AccountId =: accountIdByGlobalId.get(girlWithMembershipGlobalId)
+                                        AND Product2.Product_SubFamily__c =: ProductSubfamilies.GirlMembership
+                                        AND InstallDate =: defaultStartDate.addYears(-2))
+                                    OR (AccountId in: new List<Id> {
+                                        accountIdByGlobalId.get(girlWithSingleMembershipGlobalId),
+                                        accountIdByGlobalId.get(adultWithSingleMembershipGlobalId)
+                                    }))];
+        
+        testUndeleteWithOverwrittenToday(memberships);
+        assertMembershipYears(new Map<Id, integer> {
+            accountIdByGlobalId.get(adultWithMembershipsGlobalId) => girlYearsForAdultAccountWithMemberships,
+            accountIdByGlobalId.get(girlWithMembershipGlobalId) => girlYearsForGirlAccountWithMemberships,
+            accountIdByGlobalId.get(girlWithSingleMembershipGlobalId) => 1,
+            accountIdByGlobalId.get(adultWithSingleMembershipGlobalId) => 0
+        }, new Map<Id, integer> {
+            accountIdByGlobalId.get(adultWithMembershipsGlobalId) => adultYearsForAdultAccountWithMemberships,
+            accountIdByGlobalId.get(girlWithMembershipGlobalId) => 0,
+            accountIdByGlobalId.get(girlWithSingleMembershipGlobalId) => 0,
+            accountIdByGlobalId.get(adultWithSingleMembershipGlobalId) => 1
+        }, new Map<Id, Date> {
+            accountIdByGlobalId.get(adultWithMembershipsGlobalId) => adultWithMembershipsLatestEndDate,
+            accountIdByGlobalId.get(girlWithMembershipGlobalId) => girlwithMembershipsLatestEndDate,
+            accountIdByGlobalId.get(girlWithSingleMembershipGlobalId) => girlWithSingleMembershipLatestEndDate,
+            accountIdByGlobalId.get(adultWithSingleMembershipGlobalId) => adultWithSingleMembershipLatestEndDate
+        }, new Map<Id, Boolean> {
+            accountIdByGlobalId.get(adultWithMembershipsGlobalId) => false,
+            accountIdByGlobalId.get(girlWithMembershipGlobalId) => false,
+            accountIdByGlobalId.get(girlWithSingleMembershipGlobalId) => false,
+            accountIdByGlobalId.get(adultWithSingleMembershipGlobalId) => false
+        });
+    }
+
+    private static void runSimpleInsertTest(string accountGlobalId, string productSubfamily, 
+        string type, integer expectedGirlCount, integer expectedAdultCount, boolean isLifetimeMember) {
+        runSimpleInsertTest(accountGlobalId, productSubfamily, type, defaultStartDate,
+            defaultEndDate, expectedGirlCount, expectedAdultCount, defaultEndDate,
+            isLifetimeMember);
+    }
+
+    private static void runSimpleInsertTest(string accountGlobalId, string productSubfamily, 
+        string type, integer expectedGirlCount, integer expectedAdultCount,
+        Date expectedLatestEndDate, boolean isLifetimeMember) {
+        runSimpleInsertTest(accountGlobalId, productSubfamily, type, defaultStartDate,
+            defaultEndDate, expectedGirlCount, expectedAdultCount, expectedLatestEndDate,
+            isLifetimeMember);
+    }
+
+    private static void runSimpleInsertTest(string accountGlobalId, string productSubfamily,
+        string type, Date startDate, Date endDate, integer expectedGirlCount,
+        integer expectedAdultCount, Date expectedLatestEndDate, boolean isLifetimeMember) {
+        Account account = retrieveAccountByGlobalId(accountGlobalId);
+        Asset membership = setupMembership(account.Id, productSubfamily, type, startDate, endDate);
+
+        testInsertWithOverwrittenToday(membership);
+        assertMembershipYears(account.Id, expectedGirlCount, expectedAdultCount,
+            expectedLatestEndDate, isLifetimeMember);
+    }
+
+    private static void runSimpleUpdateAccountTest(string originalAccountGlobalId,
+        string newAccountGlobalId, string membershipProductFamily, integer originalAccountExpectedGirlYears,
+        integer originalAccountExpectedAdultYears, integer newAccountExpectedGirlYears,
+        integer newAccountExpectedAdultYears, Date originalExpectedLatestEndDate,
+        Date newExpectedLatestEndDate, Boolean originalExpectedLifetimeMember,
+        Boolean newExpectedLifetimeMember) {
+        Asset membership = [SELECT Id, AccountId
+                            FROM Asset
+                            WHERE Account.PersonIndividual.GSUSA_Global_Id__c =: originalAccountGlobalId
+                            AND Product2.Product_Subfamily__c =: membershipProductFamily
+                            AND Type__c = '1 Year'
+                            ORDER BY USAGEENDDATE DESC
+                            LIMIT 1];
+
+        Id originalAccountId = membership.AccountId;
+
+        membership.AccountId = [SELECT Id
+                                FROM Account
+                                WHERE PersonIndividual.GSUSA_Global_Id__c =: newAccountGlobalId
+                                LIMIT 1].Id;
+
+        testUpdateWithOverwrittenToday(membership);
+        assertMembershipYears(new Map<Id, integer> {
+            originalAccountId => originalAccountExpectedGirlYears,
+            membership.AccountId => newAccountExpectedGirlYears
+        }, new Map<Id, integer> {
+            originalAccountId => originalAccountExpectedAdultYears,
+            membership.AccountId => newAccountExpectedAdultYears
+        }, new Map<Id, Date> {
+            originalAccountId => originalExpectedLatestEndDate,
+            membership.AccountId => newExpectedLatestEndDate
+        }, new Map<Id, Boolean> {
+            originalAccountId => originalExpectedLifetimeMember,
+            membership.AccountId => newExpectedLifetimeMember
+        });
+    }
+
+    private static void runSimpleUpdateProductTest(string oldProductSubFamily, string globalId,
+        string newProductSubfamily, integer expectedGirlYearCount, integer expectedAdultYearCount,
+        Date expectedLatestEndDate, Boolean expectedLifetimeMembers) {
+        Asset membership = [SELECT Id, AccountId
+                            FROM Asset
+                            WHERE Product2.Product_Subfamily__c =: oldProductSubFamily
+                            AND Account.PersonIndividual.GSUSA_Global_Id__c =: globalId
+                            AND Type__c = '1 Year'
+                            LIMIT 1];
+
+        membership.Product2Id = [SELECT Id
+                                 FROM Product2
+                                 WHERE Product_Subfamily__c =: newProductSubfamily
+                                 LIMIT 1].Id;
+
+        testUpdateWithOverwrittenToday(membership);
+
+        assertMembershipYears(membership.AccountId, expectedGirlYearCount, expectedAdultYearCount,
+            expectedLatestEndDate, expectedLifetimeMembers);
+    }
+
+    private static Asset setupMembership(Id accountId, string productSubfamily, string type) {
+        return setupMembership(accountId, productSubfamily, type, defaultStartDate, defaultEndDate);
+    }
+
+    private static Asset setupMembership(Id accountId, string productSubfamily, string type,
+        Date startDate, Date endDate) {
+        Product2 product = [SELECT Id
+                            FROM Product2
+                            WHERE Product_Subfamily__c =: productSubfamily
+                            LIMIT 1];
+
+        return setupMembership(accountId, product.Id, type, startDate, endDate);
+    }
+
+    private static Asset setupMembership(Id accountId, Id productId, string type) {
+        return setupMembership(accountId, productId, type, defaultStartDate, defaultEndDate);
+    }
+
+    private static Asset setupMembership(Id accountId, Id productId, string type, Date startDate,
+        Date endDate) {
+        Asset membership = TestUtils.createMembership(accountId);
+        membership.Product2Id = productId;
+        membership.InstallDate = startDate;
+        membership.UsageEndDate = endDate;
+        membership.Type__c = type;
+
+        return membership;
+    }
+
+    private static Account retrieveAccountByGlobalId(string globalId) {
+        return [SELECT Id
+                FROM Account
+                WHERE PersonIndividual.GSUSA_Global_Id__c =: globalId
+                LIMIT 1];
+    }
+
+    // Special methods exist for running Unit Tests so that the Today static variable is only ovewritten in one place
+    private static void testInsertWithOverwrittenToday(Asset membership) {
+        testInsertWithOverwrittenToday(new List<Asset> {membership});
+    }
+
+    private static void testInsertWithOverwrittenToday(List<Asset> memberships) {
+        CalculateNumberOfYearsCommon.today = defaultStartDate;
+        Test.startTest();
+            insert memberships;
+        Test.stopTest();
+    }
+
+    private static void testUpdateWithOverwrittenToday(Asset membership) {
+        testUpdateWithOverwrittenToday(new List<Asset> {membership});
+    }
+
+    private static void testUpdateWithOverwrittenToday(List<Asset> memberships) {
+        CalculateNumberOfYearsCommon.today = defaultStartDate;
+        Test.startTest();
+            update memberships;
+        Test.stopTest();
+    }
+
+    private static void testDeleteWithOverwrittenToday(Asset membership) {
+        testDeleteWithOverwrittenToday(new List<Asset> {membership});
+    }
+
+    private static void testDeleteWithOverwrittenToday(List<Asset> memberships) {
+        CalculateNumberOfYearsCommon.today = defaultStartDate;
+        Test.startTest();
+            delete memberships;
+        Test.stopTest();
+    }
+
+    private static void testUndeleteWithOverwrittenToday(Asset membership) {
+        testUndeleteWithOverwrittenToday(new List<Asset> {membership});
+    }
+
+    private static void testUndeleteWithOverwrittenToday(List<Asset> memberships) {
+        CalculateNumberOfYearsCommon.today = defaultStartDate;
+        delete memberships;
+        Test.startTest();
+            undelete memberships;
+        Test.stopTest();
+    }
+
+    private static void assertMembershipYears(Id accountId, integer expectedYearsAsGirl,
+        integer expectedYearsAsAdult, Date expectedLatestEndDate,
+        boolean expectedLifetimeMembers) {
+        assertMembershipYears(new Map<Id, integer> {
+                accountId => expectedYearsAsGirl
+            }, new Map<Id, integer> {
+                accountId => expectedYearsAsAdult
+            }, new Map<Id, Date> {
+                accountId => expectedLatestEndDate
+            }, new Map<Id, Boolean> {
+                accountId => expectedLifetimeMembers
+            });
+    }
+
+    private static void assertMembershipYears(Map<Id, integer> expectedYearsAsGirlById,
+        Map<Id, integer> expectedYearsAsAdultById, Map<Id, Date> expectedLatestEndDateById,
+        Map<Id, boolean> expectedLifetimeMemberById) {
+        Set<Id> accountIds = new Set<Id>();
+        accountIds.addAll(expectedYearsAsGirlById.keySet());
+        accountIds.addAll(expectedYearsAsAdultById.keySet());
+
+        for (Account account : [SELECT Id, of_Adult_Years__pc, of_Girl_Years__pc, 
+                                       Most_Recent_Membership_End_Date__pc, Lifetime_Members__pc
+                                FROM Account
+                                WHERE Id in: accountIds]) {
+
+            if (expectedYearsAsGirlById.containsKey(account.Id)) {
+                system.assertEquals(expectedYearsAsGirlById.get(account.Id), account.of_Girl_Years__pc);
+            }
+            
+            if (expectedYearsAsAdultById.containsKey(account.Id)) {
+                system.assertEquals(expectedYearsAsAdultById.get(account.Id), account.of_Adult_Years__pc);
+            }
+
+            if (expectedLatestEndDateById.containsKey(account.Id)) {
+                system.assertEquals(expectedLatestEndDateById.get(account.Id),
+                    account.Most_Recent_Membership_End_Date__pc);
+            }
+
+            if (expectedLifetimeMemberById.containsKey(account.Id)) {
+                system.assertEquals(expectedLifetimeMemberById.get(account.Id),
+                    account.Lifetime_Members__pc);
+            }
+        }
+    }
+}

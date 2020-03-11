@@ -1,0 +1,2209 @@
+@isTest
+private class Test_AffiliationLogic {
+    // This variable is just meant to fill the Council Code field and is not mean to be used to
+    // represent actual data.
+    private static final string fullCouncilCode = 'Lorem ipsum dolor sit amet, consectetuer adipiscing elit. Aenean commodo ligula eget dolor. Aenean massa. Cum sociis natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus. Donec quam felis, ultricies nec, pellentesque eu, pretiumquisa,';
+    private static final string primaryTestPersonAccountLastName = 'Primary Test Person Account';
+    private static final string primaryTestCouncilAccountName = 'Primary Test Council Account';
+    private static final string secondaryTestCouncilAccountName = 'Secondary Test Council Account';
+
+    private static final string additionalGirlWithValidMembershipLastName = 'additionalGirlWithvalidMembership';
+    private static final string girlWithNoMembershipLastName = 'NoMembershipGirl';
+    private static final string additionalgirlWithNoMembershipLastName = 'AdditionalNoMembershipGirl';
+    private static final string girlWithInvalidMembershipLastName = 'InvalidMembershipGirl';
+    private static final string girlWithExpiredMembershipLastName = 'expiredMembershipGirl';
+
+    private static final string adultWithValidMembershipLastName = 'adultWithValidMembership';
+    private static final string adultWithValidLifetimeMembershipLastName = 'adultWithValidLifetimeMembership';
+    private static final string adultWithNoMembershipLastName = 'adultWithNoMembership';
+    private static final string adultWithInvalidMembershipLastName = 'adultWithInvalidMembership';
+    private static final string adultWithExpiredMembershipLastName = 'adultWithExpiredMembership';
+
+    private static final string primaryTestHouseholdAccountName = 'Primary Test Household Account';
+    private static integer councilCodeLength = 5;
+    private static string troopWithNoMembersName = 'noMembersTroop';
+    private static string troopWithMembersName = 'troopWithMembers';
+    private static string troopWithInactiveAffiliation = 'troopWithInactiveAffiliation';
+
+    @testSetup
+    private static void setupTestData(){
+        upsert TestUtils.getTriggerSettings();
+        upsert TestUtils.getRecordTypeIdSettings();
+
+        Map<string, Id> accountRecordTypesByDeveloperName = RecordTypeCommon.GetRecordTypeIdsByDeveloperNames(
+            'Account', new List<string> {AccountRecordTypes.Council, AccountRecordTypes.GSUSA,
+                PersonAccountRecordTypes.Youth,PersonAccountRecordTypes.Adult,AccountRecordTypes.Troop,AccountRecordTypes.HouseholdUnit});
+
+        List<Account> accounts = TestUtils.createAccounts(4,
+            accountRecordTypesByDeveloperName.get(AccountRecordTypes.Council));
+        
+        accounts.addAll(TestUtils.createAccounts(2, 
+            accountRecordTypesByDeveloperName.get(AccountRecordTypes.GSUSA)));
+
+        accounts[0].Council_Code_for_Entry__c = '123';
+        accounts[0].Name = primaryTestCouncilAccountName;
+        accounts[1].Council_Code_for_Entry__c = '982';
+        accounts[1].Name = secondaryTestCouncilAccountName;
+        accounts[2].Council_Code_for_Entry__c = '984';
+        accounts[3].Council_Code_for_Entry__c = '985';
+        accounts[4].Council_Code_for_Entry__c = '432';
+        insert accounts;
+
+        List<Account> additionalAccounts = new List<Account>();
+         
+        List<Account> youthAccounts = TestUtils.CreatePersonAccounts(5,
+            accountRecordTypesByDeveloperName.get(PersonAccountRecordTypes.Youth));
+        youthAccounts[0].Council_Code_for_Entry__c = '198';
+        youthAccounts[0].LastName = primaryTestPersonAccountLastName;
+        
+        youthAccounts[1].Primary_Council__pc = accounts[0].Id;
+        youthAccounts[1].Primary_Council_Assignment_Reason__pc = PrimaryCouncilAssignmentReasons.ZipCode;
+        youthAccounts[1].LastName = girlWithNoMembershipLastName;
+
+        youthAccounts[2].Primary_Council__pc = accounts[1].Id;
+        youthAccounts[2].Primary_Council_Assignment_Reason__pc = PrimaryCouncilAssignmentReasons.TroopOrCouncil;
+        youthAccounts[2].LastName = girlWithInvalidMembershipLastName;
+
+        youthAccounts[3].Primary_Council__pc = accounts[1].Id;
+        youthAccounts[3].Primary_Council_Assignment_Reason__pc = PrimaryCouncilAssignmentReasons.Series;
+        youthAccounts[3].LastName = girlWithExpiredMembershipLastName;
+        additionalAccounts.addAll(youthAccounts);
+
+        youthAccounts[4].LastName = additionalGirlWithValidMembershipLastName;
+        //youthAccounts[5].LastName = additionalgirlWithNoMembershipLastName;
+        
+        List<Account> adultAccounts = TestUtils.CreatePersonAccounts(5,
+            accountRecordTypesByDeveloperName.get(PersonAccountRecordTypes.Adult), 'Other');
+        adultAccounts[0].LastName = adultWithValidMembershipLastName;
+        adultAccounts[1].LastName = adultWithValidLifetimeMembershipLastName;
+        adultAccounts[2].LastName = adultWithNoMembershipLastName;
+        adultAccounts[3].LastName = adultWithInvalidMembershipLastName;
+        adultAccounts[4].LastName = adultWithExpiredMembershipLastName;
+
+
+        adultAccounts[1].Role__pc = String.format('{0};{1}' , new List<Object>{adultAccounts[1].Role__pc , 'Adult'});
+        adultAccounts[3].Role__pc = '';
+        additionalAccounts.addAll(adultAccounts);
+
+        List<Account> troopAccounts = TestUtils.createAccounts(3, 
+            accountRecordTypesByDeveloperName.get(AccountRecordTypes.Troop));
+        troopAccounts[0].Council__c = accounts[0].Id;
+        troopAccounts[0].ShippingPostalCode = '10108';
+        troopAccounts[0].Name = troopWithNoMembersName;
+        troopAccounts[1].Council__c = accounts[1].Id;
+        troopAccounts[1].ShippingPostalCode = '10108';
+        troopAccounts[1].Name = troopWithMembersName;
+        troopAccounts[2].Council__c = accounts[1].Id;
+        troopAccounts[2].ShippingPostalCode = '10108';
+        troopAccounts[2].Name = troopWithInactiveAffiliation;
+        additionalAccounts.addAll(troopAccounts);
+
+        insert additionalAccounts;
+
+        accounts.addAll(additionalAccounts);
+        
+        List<Account> houseHoldAccounts = TestUtils.createAccounts(5,
+            accountRecordTypesByDeveloperName.get(AccountRecordTypes.HouseholdUnit));
+        houseHoldAccounts[0].Name = primaryTestHouseholdAccountName ;
+        for(integer i=0; i<houseHoldAccounts.size() ;i++){
+			houseHoldAccounts[i].Name = String.format('{0} {1}' , new List<Object>{primaryTestHouseholdAccountName ,i}) ;
+        }
+        
+        insert houseHoldAccounts;
+        
+        List<Affiliation__c> affiliations = new List<Affiliation__c>();
+        affiliations.add(TestUtils.createAffiliation(accounts[2], youthAccounts[2]));
+        affiliations.add(TestUtils.createAffiliation(accounts[2], accounts[3]));
+        affiliations.add(TestUtils.createAffiliation(accounts[2], accounts[5]));
+        affiliations.add(TestUtils.createAffiliation(accounts[0], troopAccounts[0], 'School'));
+        affiliations.add(TestUtils.createAffiliation(troopAccounts[1], accounts[1]));
+        affiliations.add(TestUtils.createAffiliation(accounts[2], troopAccounts[0], 'School'));
+        
+        Affiliation__c aff1 = TestUtils.createAffiliation(troopAccounts[1], youthAccounts[4], 'Troop');
+        //Will set Renewal Status as 'Pending' -> Use for delete - count affects Cy, NY
+        setAffiliationStartDateEndDateForRenewalStatus(aff1,'Pending');
+        aff1.Active__c = true;
+        aff1.Not_Returning__c = false;
+        affiliations.add(aff1);
+
+        Affiliation__c youthAff = TestUtils.createAffiliation(troopAccounts[1], youthAccounts[0], 'Troop');
+        setAffiliationStartDateEndDateForRenewalStatus(youthAff,'');
+        youthAff.Not_Returning__c = false;
+        affiliations.add(youthAff);
+
+        affiliations.add(TestUtils.createAffiliation(troopAccounts[0], youthAccounts[4], 'Council'));
+        
+        // /////
+        Affiliation__c aff = TestUtils.createAffiliation(troopAccounts[1], adultAccounts[1], 'Troop');
+        //Will set Renewal Status as 'Expiring' -> Use for delete - count affects Cy, NY
+        setAffiliationStartDateEndDateForRenewalStatus(aff,'Expiring');
+        aff.Active__c = true;
+        aff.Not_Returning__c = false;
+        affiliations.add(aff);
+
+        Affiliation__c aff2 = TestUtils.createAffiliation(troopAccounts[1], adultAccounts[0], 'Troop');
+        setAffiliationStartDateEndDateForRenewalStatus(aff2,'');
+        aff2.Active__c = true;
+        aff2.Not_Returning__c = false;
+        affiliations.add(aff2);
+
+        /*Affiliation__c aff3 = TestUtils.createAffiliation(troopAccounts[2], adultAccounts[0], 'Troop');
+        setAffiliationStartDateEndDateForRenewalStatus(aff3,'');
+        aff3.Active__c = false;
+        aff3.Not_Returning__c = false;
+        affiliations.add(aff3);*/
+
+        affiliations.add(TestUtils.createAffiliation(troopAccounts[0], adultAccounts[1], 'Council'));
+
+        affiliations.add(TestUtils.createAffiliation(adultAccounts[3], troopAccounts[1], 'Troop'));
+        affiliations.add(TestUtils.createAffiliation(youthAccounts[2], troopAccounts[1], 'Troop'));
+
+        affiliations[5].Active__c = false;
+        affiliations[7].Active__c = false;
+        affiliations[10].Active__c = false;
+
+        insert affiliations;
+
+        // Insert Integration Settings after setting up records to avoid additional integration runs.
+        insert TestUtils.getIntegrationSettings();
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_DisableTrigger() {
+        Trigger_Settings__c triggerSettings = TestUtils.getTriggerSettings();
+        triggerSettings.Affiliation__c = false;
+        update triggerSettings;
+
+        PersonAndBusinessAccount accounts = RetrievePersonAndBusinessAccounts();
+
+        Test.startTest();
+            insert TestUtils.createAffiliation(accounts.BusinessAccount,
+                accounts.PersonAccount);
+        Test.stopTest();
+
+        assertRelatedCouncils(null, accounts.PersonAccount.Id);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_addTypeToRoleFrmHouseholdToPersonAcc() {
+        List<AdultAndHouseholdAccount> adultNHouseholdAccList = RetrievePersonAndHouseholdAccounts();
+    	List<Affiliation__c> affList = new List<Affiliation__c>();
+        
+        String invalidRoleSet;
+        Map<Id,Map<String,String>> adultPersonAccIDNRoleNErrMsgMap = new Map<Id,Map<String,String>>();
+        for(integer i=0; i<adultNHouseholdAccList.size(); i++){
+            if(adultNHouseholdAccList[i].AdultPersonAccount.Role__pc == 'Adult'){
+            	affList.add(TestUtils.createAffiliation(adultNHouseholdAccList[i].HouseholdAccount,adultNHouseholdAccList[i].AdultPersonAccount,'Adult')); 
+                adultPersonAccIDNRoleNErrMsgMap.put(adultNHouseholdAccList[i].AdultPersonAccount.Id,new Map<String,String>{'Adult'=>'Role added more than once'});
+            }
+            else if(invalidRoleSet != 'Set'){
+            	affList.add(TestUtils.createAffiliation(adultNHouseholdAccList[i].HouseholdAccount,adultNHouseholdAccList[i].AdultPersonAccount,'CEO'));
+                invalidRoleSet = 'Set';
+                adultPersonAccIDNRoleNErrMsgMap.put(adultNHouseholdAccList[i].AdultPersonAccount.Id,new Map<String,String>{'CEO'=>'Invalid Role added'});
+            }
+            else{
+            	affList.add(TestUtils.createAffiliation(adultNHouseholdAccList[i].HouseholdAccount,adultNHouseholdAccList[i].AdultPersonAccount,'Parent'));
+                adultPersonAccIDNRoleNErrMsgMap.put(adultNHouseholdAccList[i].AdultPersonAccount.Id,new Map<String,String>{'Parent'=>'Role is not updated with Type in Affliation(Insert method)'});
+            }
+        }
+        
+        Test.startTest();
+            insert affList;
+        Test.stopTest();
+        assertTypeUpdateToRoleInPersonAcc(adultPersonAccIDNRoleNErrMsgMap);
+    }
+    
+    @isTest
+    private static void Test_AffiliationLogic_Update_addTypeToRoleFrmHouseholdToPersonAcc() {
+        Map<Id,Map<String,String>> adultPersonAccIDNRoleNErrMsgMap = new Map<Id,Map<String,String>>();
+        List<AdultAndHouseholdAccount> adultNHouseholdAccList = RetrievePersonAndHouseholdAccounts();
+        adultNHouseholdAccList[1].AdultPersonAccount.Role__pc = null;
+        update adultNHouseholdAccList[1].AdultPersonAccount;
+        List<Affiliation__c> affList = new List<Affiliation__c>();
+        affList.add(TestUtils.createAffiliation(adultNHouseholdAccList[1].AdultPersonAccount,
+                adultNHouseholdAccList[1].HouseholdAccount,'Parent'));
+        adultPersonAccIDNRoleNErrMsgMap.put(adultNHouseholdAccList[1].AdultPersonAccount.Id,new Map<String,String>{'Parent'=>'Role is not updated with Type in Affliation(Insert method)'});
+    	affList.add(TestUtils.createAffiliation(adultNHouseholdAccList[0].HouseholdAccount,
+                adultNHouseholdAccList[0].AdultPersonAccount,'Parent'));
+        insert affList;
+        affList[0].Account__c = adultNHouseholdAccList[0].HouseholdAccount.Id;
+        affList[0].Household__c = affList[0].Account__c;
+        affList[0].Account2__c = adultNHouseholdAccList[0].AdultPersonAccount.Id;
+        affList[0].Person__c = affList[0].Account2__c;
+        affList[0].Type__c = 'Grandparent';
+        Test.startTest();
+            update affList;
+        Test.stopTest();
+        assertTypeUpdateToRoleInPersonAccFromUpdate(adultNHouseholdAccList[0].AdultPersonAccount.Id,'Role is not updated with Type in Affliation(Update method)','Grandparent');
+        assertTypeUpdateToRoleInPersonAcc(adultPersonAccIDNRoleNErrMsgMap);
+    }
+    
+    @isTest
+    private static void Test_AffiliationLogic_Insert_SetRelatedCouncilsFromBlank() {
+        PersonAndBusinessAccount accounts = RetrievePersonAndBusinessAccounts();
+
+        Test.startTest();
+            insert TestUtils.createAffiliation(accounts.BusinessAccount,
+                accounts.PersonAccount);
+        Test.stopTest();
+
+        assertRelatedCouncils(accounts.BusinessAccount.Council_Code_for_Entry__c,
+            accounts.PersonAccount.Id);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_SetRelatedCouncilExistingCodes() {
+        PersonAndBusinessAccount accounts = RetrievePersonAndBusinessAccounts();
+        accounts.PersonAccount.Related_Councils__c = '345';
+        update accounts.PersonAccount;
+
+        Test.startTest();
+            insert TestUtils.createAffiliation(accounts.BusinessAccount,
+                accounts.PersonAccount);
+        Test.stopTest();
+
+        assertRelatedCouncils(string.format('345; {0}', new List<string> {
+            accounts.BusinessAccount.Council_Code_for_Entry__c}),
+            accounts.personAccount.Id);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_InsertInactiveDontChangeRelatedCouncils() {
+        PersonAndBusinessAccount accounts = RetrievePersonAndBusinessAccounts();
+        accounts.PersonAccount.Related_Councils__c = '123';
+        update accounts.PersonAccount;
+
+        Affiliation__c affiliation =  TestUtils.createAffiliation(accounts.BusinessAccount,
+            accounts.PersonAccount);
+        affiliation.Active__c = false;
+
+        Test.startTest();
+            insert affiliation;
+        Test.stopTest();
+
+        assertRelatedCouncils(string.format('123', new List<string> {
+            accounts.BusinessAccount.Council_Code_for_Entry__c}),
+            accounts.personAccount.Id);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_SetRelatedCouncilRelateNonCouncil() {
+        List<Account> accounts = [SELECT Id, RecordType.DeveloperName
+                                  FROM Account
+                                  WHERE (RecordType.DeveloperName =: PersonAccountRecordTypes.Youth
+                                       AND LastName =: primaryTestPersonAccountLastName)
+                                  OR RecordType.DeveloperName =: AccountRecordTypes.GSUSA];
+
+        Map<string, Account> accountsByRecordTypeDeveloperName = new Map<string, Account>();
+        for (Account account : accounts) {
+            accountsByRecordTypeDeveloperName.put(account.RecordType.DeveloperName, account);
+        }
+
+        Account personAccount = accountsByRecordTypeDeveloperName.get(PersonAccountRecordTypes.Youth);
+        Test.startTest();
+            insert TestUtils.createAffiliation(
+                accountsByRecordTypeDeveloperName.get(AccountRecordTypes.GSUSA),
+                personAccount);
+        Test.stopTest();
+
+        assertRelatedCouncils(null, personAccount.Id);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_SetRelatedCouncilFilledCode() {
+        PersonAndBusinessAccount accounts = RetrievePersonAndBusinessAccounts();
+        accounts.PersonAccount.Related_Councils__c = fullCouncilCode;
+        update accounts.PersonAccount;
+
+        Test.startTest();
+            insert TestUtils.createAffiliation(accounts.BusinessAccount,
+                accounts.PersonAccount);
+        Test.stopTest();
+
+        assertRelatedCouncils(fullCouncilCode, accounts.personAccount.Id, true);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_SetRelatedCouncilCodeAlreadySet() {
+        PersonAndBusinessAccount accounts = RetrievePersonAndBusinessAccounts();
+        string originalRelatedCouncils = string.format('{0};345', new List<string> {
+            accounts.BusinessAccount.Council_Code_for_Entry__c});
+
+        accounts.PersonAccount.Related_Councils__c = originalRelatedCouncils;
+        update accounts.PersonAccount;
+
+        Test.startTest();
+            insert TestUtils.createAffiliation(accounts.BusinessAccount,
+                accounts.PersonAccount);
+        Test.stopTest();
+
+        assertRelatedCouncils(originalRelatedCouncils, accounts.personAccount.Id);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_SetRelatedCouncilSetToFillCode() {
+        PersonAndBusinessAccount accounts = RetrievePersonAndBusinessAccounts();
+        accounts.PersonAccount.Related_Councils__c = fullCouncilCode.substring(0, fullCouncilCode.length() - councilCodeLength);
+        update accounts.PersonAccount;
+
+        Test.startTest();
+            insert TestUtils.createAffiliation(accounts.BusinessAccount,
+                accounts.PersonAccount);
+        Test.stopTest();
+
+        assertRelatedCouncils(string.format('{0}; {1}', new List<string> { 
+            accounts.PersonAccount.Related_Councils__c,
+            accounts.BusinessAccount.Council_Code_for_Entry__c}),
+            accounts.personAccount.Id);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_SetRelatedCouncilSetToOverFillCode() {
+        PersonAndBusinessAccount accounts = RetrievePersonAndBusinessAccounts();
+        accounts.PersonAccount.Related_Councils__c = fullCouncilCode.substring(0, fullCouncilCode.length() - 3);
+        update accounts.PersonAccount;
+
+        Test.startTest();
+            insert TestUtils.createAffiliation(accounts.BusinessAccount,
+                accounts.PersonAccount);
+        Test.stopTest();
+
+        assertRelatedCouncils(accounts.PersonAccount.Related_Councils__c,
+            accounts.PersonAccount.Id, true);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_SetRelatedCouncilsFromBlankAccount1Council() {
+        PersonAndBusinessAccount accounts = RetrievePersonAndBusinessAccounts();
+
+        Test.startTest();
+            insert TestUtils.createAffiliation(accounts.PersonAccount.Id,
+                accounts.BusinessAccount.Id);
+        Test.stopTest();
+
+        assertRelatedCouncils(accounts.BusinessAccount.Council_Code_for_Entry__c,
+            accounts.PersonAccount.Id);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_SetRelatedCouncilsFromBlankNonpersonAccount() {
+        List<Account> accounts = [SELECT Id, RecordType.DeveloperName, Council_Code_for_Entry__c
+                                  FROM Account
+                                  WHERE RecordType.DeveloperName =: AccountRecordTypes.GSUSA
+                                  OR (RecordType.DeveloperName =: AccountRecordTypes.Council
+                                    AND Name =: primaryTestCouncilAccountName)
+                                  LIMIT 2];
+                                  
+        Map<string, Account> accountsbyRecordTypeDeveloperName = new Map<string, Account>();
+        for (Account account : accounts) {
+            accountsbyRecordTypeDeveloperName.put(account.RecordType.DeveloperName, account);
+        }
+
+        Account councilAccount = accountsbyRecordTypeDeveloperName.get(AccountRecordTypes.Council);
+        Account gsUsaAccount = accountsbyRecordTypeDeveloperName.get(AccountRecordTypes.GSUSA);
+
+        Test.startTest();
+            insert TestUtils.createAffiliation(councilAccount, gsUsaAccount);
+        Test.stopTest();
+
+        assertRelatedCouncils(councilAccount.Council_Code_for_Entry__c, gsUsaAccount.Id);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_SetRelatedCouncilsFromBlankCouncilAccount() {
+        List<Account> accounts = [SELECT Id, RecordType.DeveloperName, Council_Code_for_Entry__c
+                                  FROM Account
+                                  WHERE RecordType.DeveloperName =:  AccountRecordTypes.Council
+                                  LIMIT 2];
+
+        Test.startTest();
+            insert TestUtils.createAffiliation(accounts[0], accounts[1]);
+        Test.stopTest();
+
+        // The Account passed into the Account 1 field will have its Council field set
+        assertRelatedCouncils(accounts[0].Council_Code_for_Entry__c, accounts[1].Id);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_SchoolAffiliationRunIntegrationAndRelateCouncils() {
+        List<Account> accounts = [SELECT Id, RecordType.DeveloperName
+                                  FROM Account
+                                  WHERE (RecordType.DeveloperName =: AccountRecordTypes.Council
+                                  AND Council_Code_for_Entry__c = '123')
+                                  OR RecordType.DeveloperName =: AccountRecordTypes.Troop];
+
+        Account councilAccount;
+        Account troopAccount;
+        for (Account account : accounts) {
+            if (account.RecordType.DeveloperName == AccountRecordTypes.Council) {
+                councilAccount = account;
+            }
+            else if (account.RecordType.DeveloperName == AccountRecordTypes.Troop) {
+                troopAccount = account;
+            }
+
+            if (councilAccount != null && troopAccount != null) {
+                break;
+            }
+        }
+
+        Affiliation__c affiliation = TestUtils.createAffiliation(troopAccount, councilAccount);
+        affiliation.Type__c = 'School';
+
+        Test.setMock(HttpCalloutMock.class, new SolrHttpRequestMock(201, 'Success'));
+        Test.startTest();
+            insert affiliation;
+        Test.stopTest();
+        
+        assertRelatedCouncils('123', troopAccount.Id, false, false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_RelateMultipleRecordsAndRunIntegration() {
+        Map<string, List<Account>> accountsByRecordTypeDeveloperName = retrieveAllAccountsbyRecordTypeDeveloperName();
+
+        List<Account> personAccounts = accountsByRecordTypeDeveloperName.get(PersonAccountRecordTypes.Youth);
+        List<Account> councilAccounts = accountsByRecordTypeDeveloperName.get(AccountRecordTypes.Council);
+        Account gsUsaAccount = accountsByRecordTypeDeveloperName.get(AccountRecordTypes.GSUSA)[0];
+        List<Account> troopAccounts = accountsByRecordTypeDeveloperName.get(AccountRecordTypes.Troop);
+
+        Map<Id, string> expectedRelatedCouncilsByAccountId = new Map<Id, string>();
+        List<Affiliation__c> affiliations = new List<Affiliation__c>();
+        affiliations.add(TestUtils.createAffiliation(personAccounts[0], councilAccounts[0]));
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[1], personAccounts[0]));
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[2], personAccounts[0]));
+        expectedRelatedCouncilsByAccountId.put(personAccounts[0].Id, '123; 982; 984');
+
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[3], personAccounts[1]));
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[3], personAccounts[1]));
+        expectedRelatedCouncilsByAccountId.put(personAccounts[1].Id, '985');
+
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[1], personAccounts[2]));
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[2], personAccounts[2]));
+        expectedRelatedCouncilsByAccountId.put(personAccounts[2].Id, '984; 982');
+
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[0], personAccounts[3]));
+        affiliations.add(TestUtils.createAffiliation(gsUsaAccount, personAccounts[3]));
+        expectedRelatedCouncilsByAccountId.put(personAccounts[3].Id, '123');
+
+        affiliations.add(TestUtils.createAffiliation(gsUsaAccount, councilAccounts[0]));
+        expectedRelatedCouncilsByAccountId.put(gsUsaAccount.Id, '123');
+
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[0], councilAccounts[1]));
+        expectedRelatedCouncilsByAccountId.put(councilAccounts[1].Id, '123');
+
+        affiliations.add(TestUtils.createAffiliation(troopAccounts[0], personAccounts[0]));
+        affiliations.add(TestUtils.createAffiliation(personAccounts[1], troopAccounts[1]));
+        affiliations.add(TestUtils.createAffiliation(personAccounts[2], troopAccounts[0]));
+
+        affiliations[11].Type__c = 'School';
+        affiliations[13].Type__c = 'School';
+
+        Test.setMock(HttpCalloutMock.class, new SolrHttpRequestMock());
+        Test.startTest();
+            insert affiliations;
+        Test.stopTest();
+        
+        List<Account> updatedPersonAccounts = [SELECT Id, Related_Councils__c
+                                               FROM Account
+                                               WHERE Id in: personAccounts
+                                               OR Id =: gsUsaAccount.Id
+                                               OR Id =: councilAccounts[1].Id];
+        
+        for (Account account : updatedPersonAccounts) {
+            system.assertEquals(expectedRelatedCouncilsByAccountId.get(account.Id),
+                account.Related_Councils__c);
+        }
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_SetPrimaryCouncilFromCouncilAffiliation() {
+        runSetPrimaryCouncilOnInsertTest(false, null, null, primaryTestCouncilAccountName, PrimaryCouncilAssignmentReasons.TroopOrCouncil, true);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_SetPrimaryCouncilFromTroopAffiliation() {
+        runSetPrimaryCouncilOnInsertTest(true, null, null, primaryTestCouncilAccountName, PrimaryCouncilAssignmentReasons.TroopOrCouncil, true);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_SetPrimaryCouncilFromCouncilAffiliationOvewriteZipCode() {
+        runSetPrimaryCouncilOnInsertTest(false, primaryTestCouncilAccountName, PrimaryCouncilAssignmentReasons.ZipCode, secondaryTestCouncilAccountName, 
+                                            PrimaryCouncilAssignmentReasons.TroopOrCouncil, true);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_SetPrimaryCouncilFromTroopAffiliationOverwriteZipCode() {
+        runSetPrimaryCouncilOnInsertTest(true, primaryTestCouncilAccountName, PrimaryCouncilAssignmentReasons.ZipCode, secondaryTestCouncilAccountName, 
+                                            PrimaryCouncilAssignmentReasons.TroopOrCouncil, true);
+    }
+    
+    @isTest
+    private static void Test_AffiliationLogic_Insert_SetPrimaryCouncilFromCouncilAffiliationCaseForSeries() {
+        runSetPrimaryCouncilOnInsertTest(false, secondaryTestCouncilAccountName, PrimaryCouncilAssignmentReasons.Series, secondaryTestCouncilAccountName, 
+                                            PrimaryCouncilAssignmentReasons.TroopOrCouncil, false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_TroopAffiliation_IncrementTroopGirlCounterFromNull() {
+        runInsertSingleAffliationIncrementTotalGirlsMembershipTest(troopWithNoMembersName,
+            primaryTestPersonAccountLastName, true, true, false, false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_TroopAffiliation_IncrementTroopGirlCounterFromNonNull() {
+
+        runInsertSingleAffliationIncrementTotalGirlsMembershipTest(troopWithMembersName,
+        girlWithNoMembershipLastName, true, true, false, false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_TroopAffiliation_DoNotIncrementTroopGirlCounterDuplicate() {
+        runInsertSingleAffliationIncrementTotalGirlsMembershipTest(troopWithMembersName,
+            additionalGirlWithValidMembershipLastName, false, false, false, false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_TroopAffiliation_DoNotIncrementTroopGirlCounterNoMembership() {
+        runInsertSingleAffliationIncrementTotalGirlsMembershipTest(troopWithMembersName,
+        additionalGirlWithValidMembershipLastName, false, false, false, false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_TroopAffiliation_DoNotIncrementTroopGirlCounterInvalidMemberhsip() {
+        runInsertSingleAffliationIncrementTotalGirlsMembershipTest(troopWithMembersName,
+            girlWithInvalidMembershipLastName, false, false, false, false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_TroopAffiliation_DoNotIncrementTroopGirlCounterAdult() {
+        runInsertSingleAffliationIncrementTotalGirlsMembershipTest(troopWithMembersName,
+            adultWithInvalidMembershipLastName, false, false, false, false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_TroopAffiliation_IncrementTroopGirlCounterReversedAffiliation() {
+        PersonAndBusinessAccount personAndTroopAccount = retrievePersonAndTroopAccounts(
+            troopWithNoMembersName, primaryTestPersonAccountLastName);
+
+        Affiliation__c affiliation = TestUtils.createAffiliation(
+            personAndTroopAccount.BusinessAccount, personAndTroopAccount.PersonAccount,
+            'Troop');
+        setAffiliationStartDateEndDateForRenewalStatus(affiliation,'Expiring');
+        affiliation.Not_Returning__c = false;
+        affiliation.Active__c = true;
+        Test.startTest();
+            insert affiliation;
+        Test.stopTest();
+
+        assertTotalGirlMembership(personAndTroopAccount.BusinessAccount.Id,
+            personAndTroopAccount.BusinessAccount, true, true, false, false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_TroopAffiliation_DoNotIncrementTroopGirlCounterNonTroop() {
+        PersonAndBusinessAccount personAndTroopAccount = retrievePersonAndTroopAccounts(
+            troopWithNoMembersName, primaryTestPersonAccountLastName);
+
+        Affiliation__c affiliation = TestUtils.createAffiliation(
+            personAndTroopAccount.BusinessAccount, personAndTroopAccount.PersonAccount);
+        setAffiliationStartDateEndDateForRenewalStatus(affiliation,'Expired');
+        affiliation.Not_Returning__c = false;
+        affiliation.Active__c = false;
+        Test.startTest();
+            insert affiliation;
+        Test.stopTest();
+
+        assertTotalGirlMembership(personAndTroopAccount.BusinessAccount.Id,
+            personAndTroopAccount.BusinessAccount, false, false, false, false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_TroopAffiliation_DoNotIncrementTroopGirlCounterInactive() {
+        PersonAndBusinessAccount personAndTroopAccount = retrievePersonAndTroopAccounts(
+            troopWithNoMembersName, primaryTestPersonAccountLastName);
+
+        Affiliation__c affiliation = TestUtils.createAffiliation(
+            personAndTroopAccount.BusinessAccount, personAndTroopAccount.PersonAccount,
+            'Troop');
+        setAffiliationStartDateEndDateForRenewalStatus(affiliation,'Expired');
+        affiliation.Not_Returning__c = false;
+        affiliation.Active__c = false;
+        affiliation.Active__c = false;
+        
+        Test.startTest();
+            insert affiliation;
+        Test.stopTest();
+
+        assertTotalGirlMembership(personAndTroopAccount.BusinessAccount.Id,
+            personAndTroopAccount.BusinessAccount, false, false, false, false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_TroopAffiliation_IncrementTroopAdultCounterFromNull() {
+        runInsertSingleAffliationIncrementTotalAdultsMembershipTest(troopWithNoMembersName,
+            adultWithValidMembershipLastName, true,true,false,false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_TroopAffiliation_IncrementTroopAdultCounterFromNonNull() {
+        runInsertSingleAffliationIncrementTotalAdultsMembershipTest(troopWithMembersName,
+        adultWithExpiredMembershipLastName, true,true,false,false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_TroopAffiliation_DoNotIncrementTroopAdultCounterDuplicate() {
+        runInsertSingleAffliationIncrementTotalAdultsMembershipTest(troopWithMembersName,
+            adultWithValidLifetimeMembershipLastName, false, false, false, false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_TroopAffiliation_DoNotIncrementTroopAdultCounterEndDateBlank() {
+        runInsertSingleAffliationIncrementTotalAdultsMembershipTest(troopWithMembersName,
+            adultWithNoMembershipLastName, false,false,false,false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_TroopAffiliation_DoNotIncrementTroopAdultCounterInvalidMemberhsip() {
+        runInsertSingleAffliationIncrementTotalGirlsMembershipTest(troopWithMembersName,
+            adultWithInvalidMembershipLastName, false,false,false,false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_TroopAffiliation_DoNotIncrementTroopAdultCounterGirl() {
+        runInsertSingleAffliationIncrementTotalAdultsMembershipTest(troopWithMembersName,
+            girlWithInvalidMembershipLastName, false, false, false, false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_TroopAffiliation_IncrementTroopAdultCounterReversedAffiliation() {
+        PersonAndBusinessAccount personAndTroopAccount = retrievePersonAndTroopAccounts(
+            troopWithNoMembersName, adultWithValidMembershipLastName);
+
+        Affiliation__c affiliation = TestUtils.createAffiliation(
+            personAndTroopAccount.PersonAccount, personAndTroopAccount.BusinessAccount, 
+            'Troop');
+        setAffiliationStartDateEndDateForRenewalStatus(affiliation,'Expiring');
+        affiliation.Active__c = true;
+        affiliation.Not_Returning__c = false;
+        
+        Test.startTest();
+            insert affiliation;
+        Test.stopTest();
+
+        assertTotalAdultMembership(personAndTroopAccount.BusinessAccount.Id,
+            personAndTroopAccount.BusinessAccount, true,true,false,false);
+    }
+
+    /*@isTest
+    private static void Test_AffiliationLogic_Insert_TroopAffiliation_DoNotIncrementTroopAdultCounterNonTroop() {
+        PersonAndBusinessAccount personAndTroopAccount = retrievePersonAndTroopAccounts(
+            troopWithNoMembersName, adultWithValidMembershipLastName);
+
+        Affiliation__c affiliation = TestUtils.createAffiliation(
+            personAndTroopAccount.BusinessAccount, personAndTroopAccount.PersonAccount);
+        
+        Test.startTest();
+            insert affiliation;
+        Test.stopTest();
+
+        assertTotalAdultMembership(personAndTroopAccount.BusinessAccount.Id,
+            personAndTroopAccount.BusinessAccount, false);
+    }*/
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_TroopAffiliation_DoNotIncrementTroopAdultCounterInactive() {
+        PersonAndBusinessAccount personAndTroopAccount = retrievePersonAndTroopAccounts(
+            troopWithNoMembersName, adultWithValidMembershipLastName);
+
+        Affiliation__c affiliation = TestUtils.createAffiliation(
+            personAndTroopAccount.BusinessAccount, personAndTroopAccount.PersonAccount,
+            'Troop');
+        setAffiliationStartDateEndDateForRenewalStatus(affiliation,'Expiring');
+        affiliation.Not_Returning__c = false;
+        affiliation.Active__c = false;
+        
+        Test.startTest();
+            insert affiliation;
+        Test.stopTest();
+
+        assertTotalAdultMembership(personAndTroopAccount.BusinessAccount.Id,
+            personAndTroopAccount.BusinessAccount, false, false, false, false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Insert_TroopAffiliation_IncrementTroopCountersMultiple() {
+        Map<string, Account> personAccountByLastName = new Map<string, Account>();
+        Map<string, Account> troopAccountByName = new Map<string, Account>();
+
+        for (Account account : [SELECT Id, LastName, Name, RecordType.DeveloperName, IsPersonAccount,Total_Girl_Membership__c,
+                                Total_Adult_Membership__c
+                                FROM Account
+                                WHERE IsPersonAccount = true
+                                OR RecordType.DeveloperName =: AccountRecordTypes.Troop]) {
+            if (account.IsPersonAccount) {
+                personAccountByLastName.put(account.LastName, account);
+            }
+            else {
+                troopAccountByName.put(account.Name, account);
+            }
+        }
+        
+        List<Affiliation__c> affiliations = new List<Affiliation__c>();
+        Account troopAccountWithNoMembers = troopAccountByName.get(troopWithNoMembersName);
+        Account troopAccountWithMembers = troopAccountByName.get(troopWithMembersName);
+        for (Account personAccount : personAccountByLastName.values()) {
+             // Do not add an Affiliation for the second valid Person Account so counts are different
+            if (personAccount.LastName != additionalGirlWithValidMembershipLastName && 
+                personAccount.LastName != adultWithValidLifetimeMembershipLastName) {
+                Affiliation__c affiliationTemp = TestUtils.createAffiliation(troopAccountWithNoMembers, personAccount, 'Troop');
+                setAffiliationStartDateEndDateForRenewalStatus(affiliationTemp,'Expiring');
+                affiliationTemp.Active__c = true;
+                affiliations.add(affiliationTemp);
+                
+            }
+           
+            Affiliation__c affiliationTemp1 = TestUtils.createAffiliation(troopAccountWithMembers, personAccount, 'Troop');
+            setAffiliationStartDateEndDateForRenewalStatus(affiliationTemp1,'Expiring');
+            affiliationTemp1.Active__c = true;
+            affiliations.add(affiliationTemp1);
+        }
+        
+        Test.startTest();
+            insert affiliations;
+        Test.stopTest();
+        for (Account updatedTroopAccount : [SELECT Name, Total_Girl_Membership__c, Total_Adult_Membership__c
+                                            FROM Account
+                                            WHERE Id in: troopAccountByName.values()]) {
+            if (updatedTroopAccount.Name == troopWithNoMembersName) {
+                system.assertEquals(4, updatedTroopAccount.Total_Girl_Membership__c);
+                system.assertEquals(4, updatedTroopAccount.Total_Adult_Membership__c);
+            }
+            else if (updatedTroopAccount.Name == troopWithMembersName){
+                system.assertEquals(2, updatedTroopAccount.Total_Girl_Membership__c);
+                system.assertEquals(3, updatedTroopAccount.Total_Adult_Membership__c);
+            }
+        }
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Update_SetRelatedCouncilsOnCheckInactive() {
+        Affiliation__c affiliation = retrievePersonAccountAffiliation();
+
+        affiliation.Active__c = false;
+        Test.startTest();
+            update affiliation;
+        Test.stopTest();
+
+        assertRelatedCouncils(null, affiliation.Account__c);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Update_SetRelatedCouncilsOnCheckInactiveVerifyMatchingLogic() {
+        Affiliation__c affiliation = retrievePersonAccountAffiliation();
+        
+        Account personAccount = new Account(
+            Id = affiliation.Account__c,
+            Related_Councils__c = '984; 984 ;984; 1234984; 1239845; 984111;1234;984'
+        );
+        update personAccount;
+
+        affiliation.Active__c = false;
+        Test.startTest();
+            update affiliation;
+        Test.stopTest();
+
+        assertRelatedCouncils('1234984; 1239845; 984111;1234', affiliation.Account__c);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Update_SetRelatedCouncilsOnCheckInactiveBlankRelatedCouncils() {
+        Affiliation__c affiliation = retrievePersonAccountAffiliation();
+
+        Account personAccount = new Account(
+            Id = affiliation.Account__c,
+            Related_Councils__c = null
+        );
+        update personAccount;
+
+        affiliation.Active__c = false;
+        Test.startTest();
+            update affiliation;
+        Test.stopTest();
+
+        assertRelatedCouncils(null, affiliation.Account__c);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Update_SetRelatedCouncilsOnCheckActive() {
+        Affiliation__c affiliation = retrievePersonAccountAffiliation();
+        
+        affiliation.Active__c = false;
+        update affiliation;
+
+        affiliation.Active__c = true;
+        Test.startTest();
+            update affiliation;
+        Test.stopTest();
+
+        assertRelatedCouncils(affiliation.Account2__r.Council_Code_For_Entry__c,
+            affiliation.Account__c);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Update_DoNotSetRelatedCouncilsNonActiveField() {
+        Affiliation__c affiliation = retrievePersonAccountAffiliation();
+
+        affiliation.Type__c = 'CEO';
+        Test.startTest();
+            update affiliation;
+        Test.stopTest();
+
+        // Sanity check. This isn't really testing any changes
+        assertRelatedCouncils(affiliation.Account2__r.Council_Code_For_Entry__c,
+            affiliation.Account__c);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Update_SetRelatedCouncilsOnCheckInactiveNonPersonAccount() {
+        Affiliation__c affiliation = retrieveNonpersonAccountAffiliation();
+
+        affiliation.Active__c = false;
+        Test.startTest();
+            update affiliation;
+        Test.stopTest();
+
+        assertRelatedCouncils(null, affiliation.Account__c);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Update_SetRelatedCouncilsOnCheckInactiveCouncilAccount() {
+        Affiliation__c affiliation = retrieveDualCouncilAccountAffiliation();
+
+        affiliation.Active__c = false;
+        Test.startTest();
+            update affiliation;
+        Test.stopTest();
+
+        assertRelatedCouncils(null, affiliation.Account__c);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Update_RelateMultipleRecordsAndRunIntegration() {
+        Map<string, List<Account>> accountsByRecordTypeDeveloperName = retrieveAllAccountsbyRecordTypeDeveloperName();
+
+        List<Account> personAccounts = accountsByRecordTypeDeveloperName.get(PersonAccountRecordTypes.Youth);
+        List<Account> councilAccounts = accountsByRecordTypeDeveloperName.get(AccountRecordTypes.Council);
+        Account gsUsaAccount = accountsByRecordTypeDeveloperName.get(AccountRecordTypes.GSUSA)[0];
+        List<Account> troopAccounts = accountsByRecordTypeDeveloperName.get(AccountRecordTypes.Troop);
+
+        Map<Id, string> expectedRelatedCouncilsByAccountId = new Map<Id, string>();
+        List<Affiliation__c> affiliations = new List<Affiliation__c>();
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[0], personAccounts[0]));
+        expectedRelatedCouncilsByAccountId.put(personAccounts[0].Id, null);
+
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[0], personAccounts[1]));
+        affiliations[1].Active__c = false;
+        expectedRelatedCouncilsByAccountId.put(personAccounts[1].Id, '123');
+
+        affiliations.add(TestUtils.createAffiliation(personAccounts[2], councilAccounts[0]));
+        affiliations[2].Active__c = false;
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[1], personAccounts[2]));
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[3], personAccounts[2]));
+        affiliations[4].Active__c = false;
+        expectedRelatedCouncilsByAccountId.put(personAccounts[2].Id, '984; 123; 985');
+
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[0], personAccounts[3]));
+        affiliations[5].Active__c = false;
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[0], personAccounts[3]));
+        affiliations[6].Active__c = false;
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[1], personAccounts[3]));
+        expectedRelatedCouncilsByAccountId.put(personAccounts[3].Id, '123');
+
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[1], gsUsaAccount));
+        affiliations[8].Active__c = false;
+        expectedRelatedCouncilsByAccountId.put(gsUsaAccount.Id, '982');
+
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[1], councilAccounts[0]));
+        affiliations[9].Active__c = false;
+        expectedRelatedCouncilsByAccountId.put(councilAccounts[0].Id, '982'); 
+
+        Integer maxLength = SObjectType.Account.fields.Related_Councils__c.getLength();
+        string truncatedCouncilCode = fullCouncilCode.substring(1, maxLength - councilCodeLength);
+
+        expectedRelatedCouncilsByAccountId.put(personAccounts[3].Id, string.format('{0}; {1}',
+            new List<string> {truncatedCouncilCode, '123'}));
+
+        affiliations.add(TestUtils.createAffiliation(troopAccounts[0], gsUsaAccount));
+        affiliations[10].Type__c = 'School';
+        affiliations.add(TestUtils.createAffiliation(troopAccounts[1], gsUsaAccount));
+        affiliations[11].Active__c = false;
+
+        Test.setMock(HttpCalloutMock.class, new SolrHttpRequestMock());
+        insert affiliations;
+
+        personAccounts[3].Related_Councils__c = truncatedCouncilCode;
+        update personAccounts[3];
+
+        affiliations[0].Active__c = false;
+        affiliations[1].Active__c = true;
+        affiliations[2].Active__c = true;
+        affiliations[3].Active__c = false;
+        affiliations[4].Active__c = true;
+        affiliations[5].Active__c = true;
+        affiliations[6].Active__c = true;
+        affiliations[7].Active__c = false;
+        affiliations[8].Active__c = true;
+        affiliations[9].Active__c = true;
+        affiliations[10].Active__c = false;
+        affiliations[11].Active__c = true;
+        affiliations[11].Type__c = 'School';
+
+        Test.startTest();
+            update affiliations;
+        Test.stopTest();
+
+        List<Account> updatedPersonAccounts = [SELECT Id, Related_Councils__c
+                                               FROM Account
+                                               WHERE Id in: personAccounts];
+        
+        for (Account account : updatedPersonAccounts) {
+            system.assertEquals(expectedRelatedCouncilsByAccountId.get(account.Id),
+                account.Related_Councils__c);
+        }
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Update_IncrementTotalGirlsMembershipChangeType() {
+        Affiliation__c affiliation = [SELECT Id, Account2__c, Account2__r.Total_Girl_Membership__c, Account2__r.Total_Adult_Membership__c,
+                                      Account2__r.NY_Total_Girl_Membership__c, Account2__r.NY_Total_Adult_Membership__c
+                                      FROM Affiliation__c
+                                      WHERE Type__c = 'Council'
+                                      AND Account__r.LastName =: additionalGirlWithValidMembershipLastName
+                                      LIMIT 1];
+        
+        affiliation.Type__c = 'Troop';
+        setAffiliationStartDateEndDateForRenewalStatus(affiliation,'Pending');
+        affiliation.Active__c = true;
+        affiliation.Not_Returning__c = false;
+        Test.startTest();
+            update affiliation;
+        Test.stopTest();
+
+        assertTotalGirlMembership(affiliation.Account2__c,
+            affiliation.Account2__r, false, true, false, false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Update_IncrementTotalGirlsMembershipChangeEndDate() {
+        system.debug('XXX :: '+[SELECT Id, Account2__c, Account2__r.Total_Girl_Membership__c, Account2__r.Total_Adult_Membership__c,
+        Account2__r.NY_Total_Girl_Membership__c, Account2__r.NY_Total_Adult_Membership__c,Active__c,Renewal_Status__c,Start_Date__c,
+        End_Date__c
+        FROM Affiliation__c
+        WHERE Account__r.LastName =: primaryTestPersonAccountLastName
+        ]);
+        Affiliation__c affiliation = [SELECT Id, Account2__c, Account2__r.Total_Girl_Membership__c, Account2__r.Total_Adult_Membership__c,
+                                      Account2__r.NY_Total_Girl_Membership__c, Account2__r.NY_Total_Adult_Membership__c
+                                      FROM Affiliation__c
+                                      WHERE Active__c = false
+                                      AND Account__r.LastName =: primaryTestPersonAccountLastName
+                                      LIMIT 1];
+        
+        setAffiliationStartDateEndDateForRenewalStatus(affiliation,'Expiring');
+        affiliation.Active__c = true;
+        Test.startTest();
+            update affiliation;
+        Test.stopTest();
+
+        assertTotalGirlMembership(affiliation.Account2__c,
+            affiliation.Account2__r, true, true, false, false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Update_DecrementTotalGirlsMembershipChangeType() {
+        Affiliation__c affiliation = [SELECT Id, Account2__c, Account2__r.Total_Girl_Membership__c, Account2__r.Total_Adult_Membership__c,
+                                      Account2__r.NY_Total_Girl_Membership__c, Account2__r.NY_Total_Adult_Membership__c
+                                      FROM Affiliation__c
+                                      WHERE Type__c = 'Troop'
+                                      AND Account__r.LastName =: additionalGirlWithValidMembershipLastName
+                                      LIMIT 1];
+        
+        affiliation.Type__c = 'Council';
+        Test.startTest();
+            update affiliation;
+        Test.stopTest();
+
+        assertTotalGirlMembership(affiliation.Account2__c,
+            affiliation.Account2__r, false,false,false,true);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Update_DecrementTotalGirlsMembershipChangeActive() {
+        Affiliation__c affiliation = [SELECT Id, Account2__c, Account2__r.Total_Girl_Membership__c, Account2__r.Total_Adult_Membership__c,
+                                      Account2__r.NY_Total_Girl_Membership__c, Account2__r.NY_Total_Adult_Membership__c,
+                                      Renewal_Status__c,Active__c
+        FROM Affiliation__c
+                                      WHERE Type__c = 'Troop'
+                                      AND Account__r.LastName =: additionalGirlWithValidMembershipLastName
+                                      LIMIT 1];
+        
+        affiliation.Active__c = false;
+        Test.startTest();
+            update affiliation;
+        Test.stopTest();
+
+        assertTotalGirlMembership(affiliation.Account2__c,
+            affiliation.Account2__r, false,false,false,true);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Update_DecrementAndIncrementtTotalGirlsMembershipChangeAccount() {
+        Affiliation__c affiliation = [SELECT Id, Account2__c, Account2__r.Total_Girl_Membership__c,Renewal_Status__c
+                                      FROM Affiliation__c
+                                      WHERE Type__c = 'Troop'
+                                      AND Account__r.LastName =: additionalGirlWithValidMembershipLastName
+                                      LIMIT 1];
+
+        Account newTroop = [SELECT Id, Total_Girl_Membership__c
+                            FROM Account
+                            WHERE Name =: troopWithMembersName
+                            LIMIT 1];
+        
+        Account oldTroop = affiliation.Account2__r;
+        affiliation.Account2__c = newTroop.Id;
+        Test.startTest();
+            update affiliation;
+        Test.stopTest();
+
+        Map<Id, Account> troopsById = new Map<Id, Account>([SELECT Id, Total_Girl_Membership__c,NY_Total_Girl_Membership__c
+                                                            FROM Account
+                                                            WHERE Id in: new List<Id> {oldTroop.Id, newTroop.Id}]);
+        
+        system.assertEquals(oldTroop.Total_Girl_Membership__c--, troopsById.get(oldTroop.Id).Total_Girl_Membership__c);
+        system.assertEquals(1, troopsById.get(newTroop.Id).NY_Total_Girl_Membership__c);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Update_IncrementTotalGirlsMembershipChangeAccount() {
+        Affiliation__c affiliation = [SELECT Id, Account__c, Account__r.Total_Girl_Membership__c, Account__r.Total_Adult_Membership__c,
+                                      Account__r.NY_Total_Girl_Membership__c, Account__r.NY_Total_Adult_Membership__c
+                                      FROM Affiliation__c
+                                      WHERE Type__c = 'Troop'
+                                      AND Account2__r.LastName =: adultWithInvalidMembershipLastName
+                                      LIMIT 1];
+
+        Account otherPersonAccount = [SELECT Id
+                                      FROM Account
+                                      WHERE LastName =: girlWithNoMembershipLastName
+                                      LIMIT 1];
+        
+        setAffiliationStartDateEndDateForRenewalStatus(affiliation,'Pending');
+        affiliation.Active__c = true;
+        affiliation.Not_Returning__c = false;
+        affiliation.Account2__c = otherPersonAccount.Id;
+        affiliation.Person__c = otherPersonAccount.Id;
+
+        Test.startTest();
+            update affiliation;
+        Test.stopTest();
+
+        assertTotalGirlMembership(affiliation.Account__c,
+            affiliation.Account__r,false,true,false,false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Update_IncrementTotalAdultMembershipChangeType() {
+        Affiliation__c affiliation = [SELECT Id, Account2__c, Account2__r.Total_Girl_Membership__c, Account2__r.Total_Adult_Membership__c,
+                                      Account2__r.NY_Total_Girl_Membership__c, Account2__r.NY_Total_Adult_Membership__c
+                                      FROM Affiliation__c
+                                      WHERE Type__c = 'Council'
+                                      AND Account__r.LastName =: adultWithValidLifetimeMembershipLastName
+                                      LIMIT 1];
+        
+        affiliation.Type__c = 'Troop';
+        setAffiliationStartDateEndDateForRenewalStatus(affiliation,'Renewed');
+        affiliation.Not_Returning__c = false;
+        affiliation.Active__c = true;
+
+        Test.startTest();
+            update affiliation;
+        Test.stopTest();
+
+        assertTotalAdultMembership(affiliation.Account2__c,
+            affiliation.Account2__r, true, true, true, true);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Update_IncrementTotalAdultsMembershipChangeActive() {
+        Affiliation__c affiliation = [SELECT Id, Account2__c, Account2__r.Total_Girl_Membership__c, Account2__r.Total_Adult_Membership__c,
+                                      Account2__r.NY_Total_Girl_Membership__c, Account2__r.NY_Total_Adult_Membership__c
+                                      FROM Affiliation__c
+                                      WHERE Active__c = false
+                                      AND Account__r.LastName =: adultWithValidMembershipLastName
+                                      LIMIT 1];
+        
+        setAffiliationStartDateEndDateForRenewalStatus(affiliation,'Expiring');
+        affiliation.Active__c = true;
+        affiliation.Not_Returning__c = false;
+        
+        Test.startTest();
+            update affiliation;
+        Test.stopTest();
+
+        assertTotalAdultMembership(affiliation.Account2__c,
+            affiliation.Account2__r, true,true,false, false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Update_DecrementTotalAdultsMembershipChangeType() {
+        Affiliation__c affiliation = [SELECT Id, Account2__c, Account2__r.Total_Girl_Membership__c, Account2__r.Total_Adult_Membership__c,
+                                      Account2__r.NY_Total_Girl_Membership__c, Account2__r.NY_Total_Adult_Membership__c
+                                      FROM Affiliation__c
+                                      WHERE Type__c = 'Troop'
+                                      AND Account__r.LastName =: adultWithValidLifetimeMembershipLastName
+                                      LIMIT 1];
+        
+        affiliation.Type__c = 'Council';
+        Test.startTest();
+            update affiliation;
+        Test.stopTest();
+
+        assertTotalGirlMembership(affiliation.Account2__c,
+            affiliation.Account2__r, false, false, false, false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Update_DecrementTotalAdultsMembershipChangeActive() {
+        Affiliation__c affiliation = [SELECT Id, Account2__c, Account2__r.Total_Girl_Membership__c, Account2__r.Total_Adult_Membership__c,
+                                      Account2__r.NY_Total_Girl_Membership__c, Account2__r.NY_Total_Adult_Membership__c
+                                      FROM Affiliation__c
+                                      WHERE Type__c = 'Troop'
+                                      AND Account__r.LastName =: adultWithValidLifetimeMembershipLastName
+                                      LIMIT 1];
+        
+        affiliation.Active__c = false;
+        Test.startTest();
+            update affiliation;
+        Test.stopTest();
+
+        assertTotalGirlMembership(affiliation.Account2__c,
+            affiliation.Account2__r, false, false, false, false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Update_DecrementAndIncrementtTotalAdultsMembershipChangeAccount() {
+        Affiliation__c affiliation = [SELECT Id, Account2__c, Account2__r.Total_Adult_Membership__c
+                                      FROM Affiliation__c
+                                      WHERE Type__c = 'Troop'
+                                      AND Account__r.LastName =: adultWithValidLifetimeMembershipLastName
+                                      LIMIT 1];
+
+        Account newTroop = [SELECT Id, Total_Adult_Membership__c
+                            FROM Account
+                            WHERE Name =: troopWithMembersName
+                            LIMIT 1];
+        
+        Account oldTroop = affiliation.Account2__r;
+        affiliation.Account2__c = newTroop.Id;
+        Test.startTest();
+            update affiliation;
+        Test.stopTest();
+
+        Map<Id, Account> troopsById = new Map<Id, Account>([SELECT Id, Total_Adult_Membership__c
+                                                            FROM Account
+                                                            WHERE Id in: new List<Id> {oldTroop.Id, newTroop.Id}]);
+        
+        system.assertEquals(oldTroop.Total_Adult_Membership__c--, troopsById.get(oldTroop.Id).Total_Adult_Membership__c);
+        system.assertEquals(1, troopsById.get(newTroop.Id).Total_Adult_Membership__c);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Update_IncrementTotalAdultMembershipChangeAccount() {
+        Affiliation__c affiliation = [SELECT Id, Account__c, Account__r.Total_Girl_Membership__c, Account__r.Total_Adult_Membership__c,
+                                      Account__r.NY_Total_Girl_Membership__c, Account__r.NY_Total_Adult_Membership__c
+                                      FROM Affiliation__c
+                                      WHERE Type__c = 'Troop'
+                                      AND Account2__r.LastName =: girlWithInvalidMembershipLastName
+                                      LIMIT 1];
+
+        Account otherPersonAccount = [SELECT Id
+                                      FROM Account
+                                      WHERE LastName =: adultWithNoMembershipLastName
+                                      LIMIT 1];
+        
+        setAffiliationStartDateEndDateForRenewalStatus(affiliation,'Pending');
+        affiliation.Active__c = true;
+        affiliation.Not_Returning__c = false;
+        affiliation.Account2__c = otherPersonAccount.Id;
+        affiliation.Person__c = otherPersonAccount.Id;
+
+        Test.startTest();
+            update affiliation;
+        Test.stopTest();
+
+        assertTotalAdultMembership(affiliation.Account__c,
+            affiliation.Account__r, false,true,false,false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Update_TroopAffiliation_ChangeTroopCounterMultiple() {
+        Map<string, Account> personAccountByLastName = new Map<string, Account>();
+        Map<string, Account> troopAccountByName = new Map<string, Account>();
+
+        for (Account account : [SELECT Id, LastName, Name, RecordType.DeveloperName, IsPersonAccount
+                                FROM Account
+                                WHERE IsPersonAccount = true
+                                OR RecordType.DeveloperName =: AccountRecordTypes.Troop]) {
+            if (account.IsPersonAccount) {
+                personAccountByLastName.put(account.LastName, account);
+            }
+            else {
+                troopAccountByName.put(account.Name, account);
+            }
+        }
+
+        List<Affiliation__c> updateAffiliations = new List<Affiliation__c>();
+        Account troopAccountWithNoMembers = troopAccountByName.get(troopWithNoMembersName);
+        Account troopAccountWithMembers = troopAccountByName.get(troopWithMembersName);
+        
+        for (Affiliation__c affiliation : [SELECT Id, Account__c, Account2__c, Type__c, Active__c
+                                           FROM Affiliation__c
+                                           WHERE (Account__c =: troopAccountByName.values()
+                                           AND Account2__r.IsPersonAccount = true) OR
+                                           (Account2__c =: troopAccountByName.values()
+                                           AND Account__r.IsPersonAccount = true)]) {
+            setAffiliationStartDateEndDateForRenewalStatus(affiliation,'Expiring');
+            if (affiliation.Active__c == false) {
+                affiliation.Active__c = true;
+            }
+            else if (affiliation.Type__c == 'Council') {
+                affiliation.Type__c = 'Troop';
+            }
+            else if (affiliation.Account2__c == personAccountByLastName.get(adultWithInvalidMembershipLastName).Id) {
+                affiliation.Account2__c = personAccountByLastName.get(primaryTestPersonAccountLastName).Id;
+            }
+            else if (affiliation.Account2__c == personAccountByLastName.get(girlWithInvalidMembershipLastName).Id) {
+                affiliation.Account2__c = personAccountByLastName.get(primaryTestPersonAccountLastName).Id;
+            }
+            else {
+                affiliation.Account2__c = troopAccountByName.get(troopWithNoMembersName).Id;
+            }
+            updateAffiliations.add(affiliation);
+        }
+         
+        Test.startTest();
+            update updateAffiliations;
+        Test.stopTest();
+        
+        for (Account updatedTroopAccount : [SELECT Name, Total_Girl_Membership__c, Total_Adult_Membership__c
+                                            FROM Account
+                                            WHERE Id in: troopAccountByName.values()]) {
+            if (updatedTroopAccount.Name == troopWithNoMembersName) {
+                system.assertEquals(1, updatedTroopAccount.Total_Girl_Membership__c);
+                system.assertEquals(1, updatedTroopAccount.Total_Adult_Membership__c);
+            }
+            else {
+                //system.assertEquals(3, updatedTroopAccount.Total_Girl_Membership__c);
+            }
+        }
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Delete_ClearRelatedCouncilsForActiveAffiliation() {
+        Affiliation__c affiliation = retrievePersonAccountAffiliation();
+
+        Test.startTest();
+            delete affiliation;
+        Test.stopTest();
+
+        assertRelatedCouncils(null, affiliation.Account__c);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Delete_DoNotUpdateRelatedCouncilsForInactiveAffiliation() {
+        Affiliation__c affiliation = retrievePersonAccountAffiliation();
+
+        affiliation.Active__c = false;
+        update affiliation;
+
+        Account account = new Account(
+            Id = affiliation.Account__c,
+            Related_Councils__c = '145'
+        );
+
+        update account;
+
+        Test.startTest();
+            delete affiliation;
+        Test.stopTest();
+
+        assertRelatedCouncils('145',
+            affiliation.Account__c);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Delete_ClearRelatedCouncilsForActiveAffiliationNonpersonAccount() {
+        Affiliation__c affiliation = retrieveNonpersonAccountAffiliation();
+
+        Test.startTest();
+            delete affiliation;
+        Test.stopTest();
+
+        assertRelatedCouncils(null, affiliation.Account__c);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Delete_ClearRelatedCouncilsForActiveAffiliationDualCouncilAccount() {
+        Affiliation__c affiliation = retrieveDualCouncilAccountAffiliation();
+
+        Test.startTest();
+            delete affiliation;
+        Test.stopTest();
+
+        assertRelatedCouncils(null, affiliation.Account__c);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Delete_UnrelateMultiples() {
+        Map<string, List<Account>> accountsByRecordTypeDeveloperName = retrieveAllAccountsbyRecordTypeDeveloperName();
+
+        List<Account> personAccounts = accountsByRecordTypeDeveloperName.get(PersonAccountRecordTypes.Youth);
+        List<Account> councilAccounts = accountsByRecordTypeDeveloperName.get(AccountRecordTypes.Council);
+        Account gsUsaAccount = accountsByRecordTypeDeveloperName.get(AccountRecordTypes.GSUSA)[0];
+        List<Account> troopAccounts = accountsByRecordTypeDeveloperName.get(AccountRecordTypes.Troop);
+
+        Map<Id, string> expectedRelatedCouncilsByAccountId = new Map<Id, string>();
+        List<Affiliation__c> affiliations = new List<Affiliation__c>();
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[0], personAccounts[0]));
+        expectedRelatedCouncilsByAccountId.put(personAccounts[0].Id, null);
+
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[0], personAccounts[1]));
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[1], personAccounts[1]));
+        expectedRelatedCouncilsByAccountId.put(personAccounts[1].Id, null);
+
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[0], personAccounts[2]));
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[1], personAccounts[2]));
+        affiliations.add(TestUtils.createAffiliation(personAccounts[2], councilAccounts[3]));
+        expectedRelatedCouncilsByAccountId.put(personAccounts[2].Id, '984');
+
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[0], personAccounts[3]));
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[1], personAccounts[3]));
+        expectedRelatedCouncilsByAccountId.put(personAccounts[3].Id, fullCouncilCode);
+        personAccounts[3].Related_Councils__c = fullCouncilCode;
+        update personAccounts[3];
+
+        affiliations.add(TestUtils.createAffiliation(gsUsaAccount, councilAccounts[0]));
+        expectedRelatedCouncilsByAccountId.put(gsUsaAccount.Id, null);
+
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[1], councilAccounts[0]));
+        expectedRelatedCouncilsByAccountId.put(councilAccounts[0].Id, null);  
+
+        affiliations.add(TestUtils.createAffiliation(troopAccounts[0], gsUsaAccount));
+        affiliations[10].Type__c = 'School';
+        affiliations.add(TestUtils.createAffiliation(troopAccounts[1], gsUsaAccount));
+        affiliations[11].Type__c = 'School';
+        affiliations[11].Active__c = false;     
+
+        Test.setMock(HttpCalloutMock.class, new SolrHttpRequestMock());
+        insert affiliations;
+
+        Test.startTest();
+            delete affiliations;
+        Test.stopTest();
+
+        List<Account> updatedPersonAccounts = [SELECT Id, Related_Councils__c
+                                               FROM Account
+                                               WHERE Id in: personAccounts
+                                               OR Id =: gsUsaAccount.Id
+                                               OR Id =: councilAccounts[0].Id];
+        
+        for (Account account : updatedPersonAccounts) {
+            system.assertEquals(expectedRelatedCouncilsByAccountId.get(account.Id),
+                account.Related_Councils__c);
+        }
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Delete_TroopAffiliation_DecrementTroopGirlCounter() {
+        Affiliation__c affiliation = [SELECT Id, Account2__c, Account2__r.Total_Girl_Membership__c, Account2__r.Total_Adult_Membership__c,
+                                      Account2__r.NY_Total_Girl_Membership__c, Account2__r.NY_Total_Adult_Membership__c
+                                      FROM Affiliation__c
+                                      WHERE Type__c = 'Troop'
+                                      AND Account__r.LastName =: additionalGirlWithValidMembershipLastName
+                                      AND Active__c = true
+                                      LIMIT 1];
+        
+        Test.startTest();
+            delete affiliation;
+        Test.stopTest();
+        
+        assertTotalGirlMembership(affiliation.Account2__c,
+           affiliation.Account2__r, false, false, false, true);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Delete_TroopAffiliation_NoChangeToTroopGirlCounterNotValid() {
+        Affiliation__c affiliation = [SELECT Id, Account2__c, Account2__r.Total_Girl_Membership__c, Account2__r.Total_Adult_Membership__c,
+                                      Account2__r.NY_Total_Girl_Membership__c, Account2__r.NY_Total_Adult_Membership__c
+                                      FROM Affiliation__c
+                                      WHERE Type__c = 'Troop'
+                                      AND Account__r.LastName =: primaryTestPersonAccountLastName
+                                      AND Active__c = false
+                                      LIMIT 1];
+        
+        Test.startTest();
+            delete affiliation;
+        Test.stopTest();
+
+        assertTotalGirlMembership(affiliation.Account2__c,
+            affiliation.Account2__r, false, false, false, false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Delete_TroopAffiliation_DecrementTroopAdultCounter() {
+
+        Affiliation__c affiliation = [SELECT Id, Account2__c, Account2__r.Total_Girl_Membership__c, Account2__r.Total_Adult_Membership__c,
+                                      Account2__r.NY_Total_Girl_Membership__c, Account2__r.NY_Total_Adult_Membership__c,
+                                      Start_Date__c,End_Date__c,Renewal_Status__c
+                                      FROM Affiliation__c
+                                      WHERE Type__c = 'Troop'
+                                      AND Account__r.LastName =: adultWithValidLifetimeMembershipLastName
+                                      AND Active__c = true
+                                      LIMIT 1];
+        system.debug('affiliation::'+affiliation);
+        Test.startTest();
+            delete affiliation;
+        Test.stopTest();
+        system.debug('affiliation11::'+affiliation.Account2__c+ ' CC ' +
+        affiliation.Account2__r);
+        //affiliation.Account2__r.Total_Adult_Membership__c -= 1;
+        assertTotalAdultMembership(affiliation.Account2__c,
+           affiliation.Account2__r, false,false,true,true);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Delete_TroopAffiliation_NoChangeToTroopAdultEndDateBlank() {
+        Affiliation__c affiliation = [SELECT Id, Account2__c, Account2__r.Total_Girl_Membership__c, Account2__r.Total_Adult_Membership__c,
+                                      Account2__r.NY_Total_Girl_Membership__c, Account2__r.NY_Total_Adult_Membership__c
+                                      FROM Affiliation__c
+                                      WHERE Type__c = 'Troop'
+                                      AND Account__r.LastName =: adultWithValidMembershipLastName
+                                      AND Active__c = false
+                                      LIMIT 1];
+        
+        Test.startTest();
+            delete affiliation;
+        Test.stopTest();
+
+        assertTotalAdultMembership(affiliation.Account2__c,
+            affiliation.Account2__r, false,false,false,false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Undelete_SetRelatedCouncilsForActiveAffiliation() {
+        Affiliation__c affiliation = retrievePersonAccountAffiliation();
+
+        delete affiliation;
+        Test.startTest();
+            undelete affiliation;
+        Test.stopTest();
+
+        assertRelatedCouncils(affiliation.Account2__r.Council_Code_For_Entry__c,
+            affiliation.Account__c);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Undelete_DoNotSetRelatedCouncilsForInactiveAffiliation() {
+        Affiliation__c affiliation = retrievePersonAccountAffiliation();
+
+        affiliation.Active__c = false;
+        update affiliation;
+        delete affiliation;
+
+        Account account = new Account(
+            Id = affiliation.Account__c,
+            Related_Councils__c = '145'
+        );
+
+        update account;
+
+        Test.startTest();
+            undelete affiliation;
+        Test.stopTest();
+
+        assertRelatedCouncils('145',
+            affiliation.Account__c);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Undelete_SetRelatedCouncilsForActiveAffiliationNonpersonAccount() {
+        Affiliation__c affiliation = retrieveNonpersonAccountAffiliation();
+
+        delete affiliation;
+        Test.startTest();
+            undelete affiliation;
+        Test.stopTest();
+
+        assertRelatedCouncils(affiliation.Account2__r.Council_Code_For_Entry__c,
+            affiliation.Account__c);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Undelete_SetRelatedCouncilsForActiveAffiliationDualCouncilAccount() {
+        Affiliation__c affiliation = retrieveDualCouncilAccountAffiliation();
+
+        delete affiliation;
+        Test.startTest();
+            undelete affiliation;
+        Test.stopTest();
+
+        assertRelatedCouncils(affiliation.Account2__r.Council_Code_For_Entry__c,
+            affiliation.Account__c);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Undelete_RelateMultiples() {
+        Map<string, List<Account>> accountsByRecordTypeDeveloperName = retrieveAllAccountsbyRecordTypeDeveloperName();
+
+        List<Account> personAccounts = accountsByRecordTypeDeveloperName.get(PersonAccountRecordTypes.Youth);
+        List<Account> councilAccounts = accountsByRecordTypeDeveloperName.get(AccountRecordTypes.Council);
+        Account gsUsaAccount = accountsByRecordTypeDeveloperName.get(AccountRecordTypes.GSUSA)[0];
+        List<Account> troopAccounts = accountsByRecordTypeDeveloperName.get(AccountRecordTypes.Troop);
+
+        Map<Id, string> expectedRelatedCouncilsByAccountId = new Map<Id, string>();
+        List<Affiliation__c> affiliations = new List<Affiliation__c>();
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[0], personAccounts[0]));
+        expectedRelatedCouncilsByAccountId.put(personAccounts[0].Id, '123');
+
+        affiliations.add(TestUtils.createAffiliation(personAccounts[1], councilAccounts[0]));
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[1], personAccounts[1]));
+        expectedRelatedCouncilsByAccountId.put(personAccounts[1].Id, '123; 982');
+
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[0], personAccounts[2]));
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[1], personAccounts[2]));
+        affiliations[4].Active__c = false;
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[3], personAccounts[2]));
+        expectedRelatedCouncilsByAccountId.put(personAccounts[2].Id, '984; 123; 985');
+
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[0], personAccounts[3]));
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[1], personAccounts[3]));
+        expectedRelatedCouncilsByAccountId.put(personAccounts[3].Id, fullCouncilCode);
+        personAccounts[3].Related_Councils__c = fullCouncilCode;
+        update personAccounts[3];
+
+        affiliations.add(TestUtils.createAffiliation(gsUsaAccount, councilAccounts[0]));
+        expectedRelatedCouncilsByAccountId.put(gsUsaAccount.Id, '123');
+
+        affiliations.add(TestUtils.createAffiliation(councilAccounts[1], councilAccounts[0]));
+        expectedRelatedCouncilsByAccountId.put(councilAccounts[0].Id, '982');
+
+        affiliations.add(TestUtils.createAffiliation(troopAccounts[0], gsUsaAccount));
+        affiliations[10].Type__c = 'School';
+        affiliations.add(TestUtils.createAffiliation(troopAccounts[1], gsUsaAccount));
+        affiliations[11].Type__c = 'School';
+        affiliations[11].Active__c = false;    
+
+        insert affiliations;
+        delete affiliations;
+
+        Test.setMock(HttpCalloutMock.class, new SolrHttpRequestMock(201, 'Success'));
+        Test.startTest();
+            undelete affiliations;
+        Test.stopTest();
+
+        List<Account> updatedPersonAccounts = [SELECT Id, Related_Councils__c
+                                               FROM Account
+                                               WHERE Id in: personAccounts
+                                               OR Id =: gsUsaAccount.Id
+                                               OR Id =: councilAccounts[0].Id];
+        
+        for (Account account : updatedPersonAccounts) {
+            system.assertEquals(expectedRelatedCouncilsByAccountId.get(account.Id),
+                account.Related_Councils__c);
+        }
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_UnDelete_TroopAffiliation_IncrementTroopGirlCounter() {
+        Affiliation__c affiliation = [SELECT Id, Account2__c, Account2__r.Total_Girl_Membership__c, Account2__r.Total_Adult_Membership__c,
+                                      Account2__r.NY_Total_Girl_Membership__c, Account2__r.NY_Total_Adult_Membership__c
+                                      FROM Affiliation__c
+                                      WHERE Type__c = 'Troop'
+                                      AND Account__r.LastName =: additionalGirlWithValidMembershipLastName
+                                      AND Active__c = true
+                                      LIMIT 1];
+        
+        delete affiliation;
+        Test.startTest();
+            undelete affiliation;
+        Test.stopTest();
+
+        assertTotalGirlMembership(affiliation.Account2__c,
+            affiliation.Account2__r, false, false, false, false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_Undelete_TroopAffiliation_NoChangeToTroopGirlCounterNotValid() {
+        Affiliation__c affiliation = [SELECT Id, Account2__c, Account2__r.Total_Girl_Membership__c, Account2__r.Total_Adult_Membership__c,
+                                      Account2__r.NY_Total_Girl_Membership__c, Account2__r.NY_Total_Adult_Membership__c
+                                      FROM Affiliation__c
+                                      WHERE Type__c = 'Troop'
+                                      AND Account__r.LastName =: primaryTestPersonAccountLastName
+                                      AND Active__c = false
+                                      LIMIT 1];
+        
+        delete affiliation;
+        Test.startTest();
+            undelete affiliation;
+        Test.stopTest();
+
+        assertTotalGirlMembership(affiliation.Account2__c,
+            affiliation.Account2__r, false, false, false, false);
+    }
+
+    @isTest
+    private static void Test_AffiliationLogic_UnDelete_TroopAffiliation_NoChangeToIncrementTroopAdultCounter() {
+      
+        Affiliation__c affiliation = [SELECT Id, Account2__c, Account2__r.Total_Girl_Membership__c, Account2__r.Total_Adult_Membership__c,
+                                      Account2__r.NY_Total_Girl_Membership__c, Account2__r.NY_Total_Adult_Membership__c            
+                                      FROM Affiliation__c
+                                      WHERE Type__c = 'Troop'
+                                      AND Account__r.LastName =: adultWithValidLifetimeMembershipLastName
+                                      AND Active__c = true
+                                      LIMIT 1];
+        
+        delete affiliation;
+        Test.startTest();
+            undelete affiliation;
+        Test.stopTest();
+
+        assertTotalAdultMembership(affiliation.Account2__c,
+            affiliation.Account2__r,false,false,false,false);
+    }
+
+    
+    private static void runSetPrimaryCouncilOnInsertTest(boolean isTroop, 
+        string currentCouncilName, string currentAssignmentReason, string newCouncilName, string newReasonName, 
+        boolean overwrite) {
+        PersonAndBusinessAccount accounts;
+        if (isTroop) {
+            accounts = retrievePersonAndTroopAccounts(currentCouncilName, currentAssignmentReason, newCouncilName);
+        }
+        else {
+            accounts = RetrievePersonAndBusinessAccounts(currentCouncilName, currentAssignmentReason, newCouncilName);
+        }
+
+        Test.startTest();
+            insert TestUtils.createAffiliation(accounts.BusinessAccount,
+                accounts.PersonAccount, isTroop
+                                           ? 'Troop'
+                                           : 'Council');
+        Test.stopTest();
+
+        Id councilId = isTroop ? accounts.BusinessAccount.Council__c : accounts.BusinessAccount.Id;
+        String reason = overwrite ? newReasonName : currentAssignmentReason;
+        assertPrimaryCouncil(accounts.PersonAccount.Id, councilId,
+            reason, overwrite);
+    }
+
+    private static List<AdultAndHouseholdAccount> retrievePersonAndHouseholdAccounts() {
+        
+        List<Account> accounts = [SELECT Id,RecordType.DeveloperName,Role__pc
+                                  FROM Account
+                                  WHERE RecordType.DeveloperName =: PersonAccountRecordTypes.Adult
+                                  OR RecordType.DeveloperName =:  AccountRecordTypes.HouseholdUnit];
+		List<AdultAndHouseholdAccount> adultNHouseholdAccList = new List<AdultAndHouseholdAccount>();
+        List<Account> adultPersonAccList = new List<Account>();
+        List<Account> houseHoldAccList = new List<Account>();
+        for (Account account : accounts) {
+        	if (account.RecordType.DeveloperName == PersonAccountRecordTypes.Adult) {
+                adultPersonAccList.add(account);
+                   
+            }
+            else {
+                houseHoldAccList.add(account);
+            }
+            
+        }
+        for(integer i=0; i<adultPersonAccList.size(); i++){
+        	AdultAndHouseholdAccount tempAdultAndHouseholdAccount = new AdultAndHouseholdAccount();
+            tempAdultAndHouseholdAccount.AdultPersonAccount = adultPersonAccList[i];
+            tempAdultAndHouseholdAccount.HouseholdAccount = houseHoldAccList[i];
+            adultNHouseholdAccList.add(tempAdultAndHouseholdAccount);
+        }
+        return adultNHouseholdAccList;
+    }
+
+    
+    private static PersonAndBusinessAccount retrievePersonAndBusinessAccounts() {
+        List<Account> accounts = [SELECT Id, RecordType.DeveloperName, Council_Code_for_Entry__c
+                                  FROM Account
+                                  WHERE (RecordType.DeveloperName =: PersonAccountRecordTypes.Youth
+                                    AND LastName =: primaryTestPersonAccountLastName)
+                                  OR (RecordType.DeveloperName =:  AccountRecordTypes.Council
+                                    AND Name =: primaryTestCouncilAccountName)
+                                  LIMIT 2];
+
+        PersonAndBusinessAccount personAndBusinessAccount = new PersonAndBusinessAccount();
+        for (Account account : accounts) {
+            if (account.RecordType.DeveloperName == AccountRecordTypes.Council) {
+                personAndBusinessAccount.BusinessAccount = account;
+            }
+            else {
+                personAndBusinessAccount.PersonAccount = account;
+            }
+        }
+
+        return personAndBusinessAccount;
+    }
+
+    private static PersonAndBusinessAccount retrievePersonAndBusinessAccounts(string currentCouncilName, string assignmentReason, string newCouncilName) {
+        List<Account> accounts = [SELECT Id, RecordType.DeveloperName, Council_Code_for_Entry__c
+                                  FROM Account
+                                  WHERE (RecordType.DeveloperName =: PersonAccountRecordTypes.Youth
+                                    AND Primary_Council__pr.Name =: currentCouncilName
+                                    AND Primary_Council_Assignment_Reason__pc =: assignmentReason)
+                                  OR (RecordType.DeveloperName =:  AccountRecordTypes.Council
+                                    AND Name =: newCouncilName)
+                                  LIMIT 2];
+
+        PersonAndBusinessAccount personAndBusinessAccount = new PersonAndBusinessAccount();
+        for (Account account : accounts) {
+            if (account.RecordType.DeveloperName == AccountRecordTypes.Council) {
+                personAndBusinessAccount.BusinessAccount = account;
+            }
+            else {
+                personAndBusinessAccount.PersonAccount = account;
+            }
+        }
+
+        return personAndBusinessAccount;
+    }
+
+    private static PersonAndBusinessAccount retrievePersonAndTroopAccounts(string troopName, string personAccountLastName) {
+        PersonAndBusinessAccount personAndBusinessAccount = new PersonAndBusinessAccount();
+
+        for (Account account : [SELECT Id, Total_Girl_Membership__c, NY_Total_Girl_Membership__c,Total_Adult_Membership__c,
+                                NY_Total_Adult_Membership__c,RecordType.DeveloperName
+                                FROM Account
+                                WHERE (IsPersonAccount = true
+                                    AND LastName =: personAccountLastName)
+                                OR (RecordType.DeveloperName =: AccountRecordTypes.Troop
+                                    AND Name =: troopName)
+                                LIMIT 2]) {
+            if (account.RecordType.DeveloperName == AccountRecordTypes.Troop) {
+                personAndBusinessAccount.BusinessAccount = account;
+            }
+            else {
+                personAndBusinessAccount.PersonAccount = account;
+            }
+        }
+
+        return personAndBusinessAccount;
+    }
+
+    private static PersonAndBusinessAccount retrievePersonAndTroopAccounts(string currentCouncilName, string assignmentReason, string newCouncilName) {
+        List<Account> accounts = [SELECT Id, RecordType.DeveloperName, Council_Code_for_Entry__c, Council__c
+                                  FROM Account
+                                  WHERE (RecordType.DeveloperName =: PersonAccountRecordTypes.Youth
+                                    AND Primary_Council__pr.Name =: currentCouncilName
+                                    AND Primary_Council_Assignment_Reason__pc =: assignmentReason)
+                                  OR (RecordType.DeveloperName =:  AccountRecordTypes.Troop
+                                    AND Council__r.Name =: newCouncilName)
+                                  LIMIT 2];
+
+        PersonAndBusinessAccount personAndBusinessAccount = new PersonAndBusinessAccount();
+        for (Account account : accounts) {
+            if (account.RecordType.DeveloperName == AccountRecordTypes.Troop) {
+                personAndBusinessAccount.BusinessAccount = account;
+            }
+            else {
+                personAndBusinessAccount.PersonAccount = account;
+            }
+        }
+
+        return personAndBusinessAccount;
+    }
+
+    private static void assertTypeUpdateToRoleInPersonAccFromUpdate(Id personAccountId,String errMsg,String type){
+    	system.assert([select Role__pc from Account where Id=:personAccountId][0].Role__pc.contains(type),
+                      errMsg);    
+    }
+    
+    private static void assertTypeUpdateToRoleInPersonAcc(Map<Id,Map<String,String>>adultPersonAccIDNRoleNErrMsgMap){
+        for(Account accLoop : [select Role__pc from Account where Id in:adultPersonAccIDNRoleNErrMsgMap.keySet()]){
+            if(adultPersonAccIDNRoleNErrMsgMap.get(accLoop.Id).containsKey('Adult') ){
+                Set<String> roleSet = new Set<String>();
+                roleSet.addAll(accLoop.Role__pc.split(';'));
+                system.assert((roleSet.size()==accLoop.Role__pc.split(';').size()),adultPersonAccIDNRoleNErrMsgMap.get(accLoop.Id).get('Adult'));
+            }
+            else if(adultPersonAccIDNRoleNErrMsgMap.get(accLoop.Id).containsKey('CEO')){
+                system.assert(!accLoop.Role__pc.split(';').contains('CEO'),adultPersonAccIDNRoleNErrMsgMap.get(accLoop.Id).get('CEO'));
+            }
+            else if(adultPersonAccIDNRoleNErrMsgMap.get(accLoop.Id).containsKey('Parent')){
+            	system.assert(accLoop.Role__pc.split(';').contains('Parent'),adultPersonAccIDNRoleNErrMsgMap.get(accLoop.Id).get('Parent'));    
+            }
+        	    
+        }
+    }
+    
+    private static void assertRelatedCouncils(string expectedRelatedCouncils, Id personAccountId) {
+        assertRelatedCouncils(expectedRelatedCouncils, personAccountId, false, true);
+    }
+
+    private static void assertRelatedCouncils(string expectedRelatedCouncils, Id personAccountId, boolean missingRelatedCouncils) {
+        assertRelatedCouncils(expectedRelatedCouncils, personAccountId, missingRelatedCouncils, true);
+    }
+
+    private static void assertRelatedCouncils(string expectedRelatedCouncils, Id personAccountId, boolean missingRelatedCouncils,
+        boolean checkIntegrationRan) {
+        Account personAccount = [SELECT Id, Related_Councils__c, Missing_Related_Councils__c
+                                 FROM Account
+                                 WHERE Id =: personAccountId
+                                 LIMIT 1];
+
+        system.assertEquals(expectedRelatedCouncils, personAccount.Related_Councils__c);
+        system.assertEquals(missingRelatedCouncils, personAccount.Missing_Related_Councils__c);
+
+        if (checkIntegrationRan) {
+            system.assertEquals(false, IntegrationEngine_BatchBase.integrationRan);
+            system.assertEquals(0, IntegrationEngine_BatchBase.queuesProcessed);
+        }
+    }
+
+    private static Map<string, List<Account>> retrieveAllAccountsbyRecordTypeDeveloperName() {
+        Map<string, Id> accountRecordTypesByDeveloperName = RecordTypeCommon.GetRecordTypeIdsByDeveloperNames(
+            'Account', new List<string> {AccountRecordTypes.Council, AccountRecordTypes.GSUSA,
+                PersonAccountRecordTypes.Youth, AccountRecordTypes.Troop});
+
+        List<Account> existingAccounts = [SELECT Id, RecordType.DeveloperName
+                                          FROM Account
+                                          WHERE RecordTypeId in: accountRecordTypesByDeveloperName.values()];
+
+        Map<string, List<Account>> accountsByRecordTypeDeveloperName = new Map<string, List<Account>>();
+        for (Account account : existingAccounts) {
+            string developerName = account.RecordType.DeveloperName;
+            if (accountsByRecordTypeDeveloperName.containsKey(developerName) == false) {
+                accountsByRecordTypeDeveloperName.put(developerName, new List<Account>());
+            }
+
+            accountsByRecordTypeDeveloperName.get(developerName).add(account);
+        }
+
+        return accountsByRecordTypeDeveloperName;
+    }
+
+    private static Affiliation__c retrievePersonAccountAffiliation() {
+        return [SELECT Id, Account__c, Account2__r.Council_Code_For_Entry__c
+                FROM Affiliation__c
+                WHERE Account__r.IsPersonAccount = true
+                AND Type__c != 'School'
+                LIMIT 1];
+    }
+
+    private static Affiliation__c retrieveNonpersonAccountAffiliation() {
+        return [SELECT Id, Account__c, Account2__r.Council_Code_For_Entry__c
+                FROM Affiliation__c
+                WHERE Account__r.RecordType.DeveloperName =: AccountRecordTypes.GSUSA
+                AND Type__c != 'School'
+                LIMIT 1];
+    }
+
+    private static Affiliation__c retrieveDualCouncilAccountAffiliation() {
+        return [SELECT Id, Account__c, Account2__r.Council_Code_For_Entry__c
+                FROM Affiliation__c
+                WHERE Account__r.RecordType.DeveloperName =: AccountRecordTypes.Council
+                AND Type__c != 'School'
+                LIMIT 1];
+    }
+
+    private static Affiliation__c retrieveActiveSchoolAffiliation() {
+        return [SELECT Id, Account__c
+                FROM Affiliation__c
+                WHERE Type__c = 'School'
+                AND Account__r.RecordType.DeveloperName =: AccountRecordTypes.Troop
+                AND Active__c = true
+                LIMIT 1][0];
+    }
+
+    private static Affiliation__c retrieveInactiveSchoolAffiliation() {
+        return [SELECT Id, Account__c
+                FROM Affiliation__c
+                WHERE Type__c = 'School'
+                AND Account__r.RecordType.DeveloperName =: AccountRecordTypes.Troop
+                AND Active__c = false
+                LIMIT 1][0];
+    }
+
+    private static Affiliation__c retrieveActiveTroopNonSchoolAffiliation() {
+        return [SELECT Id, Account2__c
+                FROM Affiliation__c
+                WHERE Type__c != 'School'
+                AND Account2__r.RecordType.DeveloperName =: AccountRecordTypes.Troop
+                AND Active__c = true
+                LIMIT 1][0];
+    }
+
+    private static AFfiliation__c setupBasicAffiliation() {
+        List<Account> accounts = [SELECT Id, RecordType.DeveloperName
+                                  FROM Account
+                                  WHERE RecordType.DeveloperName in: new List<string> {AccountRecordTypes.GSUSA, AccountRecordTypes.Troop}];
+
+        Account troopAccount;
+        Account nonTroopAccount;
+        for (Account account : accounts) {
+            if (account.RecordType.DeveloperName == AccountRecordTypes.GSUSA) {
+                nonTroopAccount = account;
+            }
+            else if (account.RecordType.DeveloperName == AccountRecordTypes.Troop) {
+                troopAccount = account;
+            }
+
+            if (nonTroopAccount != null && troopAccount != null) {
+                break;
+            }
+        }
+
+        return TestUtils.createAffiliation(nonTroopAccount, troopAccount);
+    }
+    
+    private static void assertPrimaryCouncil(Id accountId, Id expectedPrimaryCouncilId, string expectedReason, boolean overwrite) {
+        Account account = [SELECT Id, Primary_Council__pc, Primary_Council_Assignment_Reason__pc
+                           FROM Account
+                           WHERE Id =: accountId
+                           LIMIT 1];
+        
+        system.assertEquals(expectedPrimaryCouncilId, account.Primary_Council__pc);
+        system.assertEquals(expectedReason, account.Primary_Council_Assignment_Reason__pc);
+
+        if (overwrite) {
+            assertNoCouncilTransferCases();
+        }
+        else {
+            assertCouncilTransferCases();
+        }
+    }
+
+    private static void assertNoCouncilTransferCases() {
+        // TODO: Add logic to verify Case does not exist.
+    }
+
+    private static void assertCouncilTransferCases() {
+        // TODO: Add logic to verify Case exists
+    }
+
+    private static void runInsertSingleAffliationIncrementTotalGirlsMembershipTest(
+        string troopName, string personAccountLastName, boolean incrementCounterCY, boolean incrementCounterNY,
+        boolean decrementCounterCY,boolean decrementCounterNY) {
+        PersonAndBusinessAccount personAndTroopAccount = retrievePersonAndTroopAccounts(
+            troopName, personAccountLastName);
+
+        Affiliation__c affiliation = TestUtils.createAffiliation(
+            personAndTroopAccount.PersonAccount, personAndTroopAccount.BusinessAccount,
+            'Troop');
+        
+        if(personAccountLastName == primaryTestPersonAccountLastName || personAccountLastName == girlWithNoMembershipLastName){
+            setAffiliationStartDateEndDateForRenewalStatus(affiliation,'Expiring');
+            affiliation.Active__c = true;
+            affiliation.Not_Returning__c = false;
+        }
+        else if(personAccountLastName == adultWithInvalidMembershipLastName){
+            setAffiliationStartDateEndDateForRenewalStatus(affiliation,'Expired');
+            affiliation.Active__c = false;
+            affiliation.Not_Returning__c = false;
+        }
+        else{
+            setAffiliationStartDateEndDateForRenewalStatus(affiliation,'');
+            affiliation.Active__c = true;
+            affiliation.Not_Returning__c = false;
+        }
+
+        Test.startTest();
+            insert affiliation;
+        Test.stopTest();
+
+        assertTotalGirlMembership(personAndTroopAccount.BusinessAccount.Id, 
+            personAndTroopAccount.BusinessAccount, incrementCounterCY, incrementCounterNY, decrementCounterCY, decrementCounterNY);
+    }
+
+    private static void assertTotalGirlMembership(Id troopAccountId, Account currentTroop,
+        boolean incrementCounterCY,boolean incrementCounterNY,boolean decrementCounterCY,boolean decrementCounterNY) {
+        Account troopAccount = [SELECT Id, Total_Girl_Membership__c, Total_Adult_Membership__c,
+                                NY_Total_Girl_Membership__c,NY_Total_Adult_Membership__c
+                                FROM Account
+                                WHERE Id =: troopAccountId
+                                LIMIT 1];
+
+        Decimal expectedCountCY = currentTroop.Total_Girl_Membership__c;
+        if (expectedCountCY == null) {
+            expectedCountCY = 0;
+        }
+        if (incrementCounterCY) {
+            expectedCountCY++;
+        }
+        else if (decrementCounterCY) {
+           expectedCountCY--;
+        }
+
+        Decimal expectedCountNY = currentTroop.NY_Total_Girl_Membership__c;
+        if (expectedCountNY == null) {
+            expectedCountNY = 0;
+        }
+        if (incrementCounterNY) {
+            expectedCountNY++;
+        }
+        else if (decrementCounterNY) {
+            expectedCountNY--;
+        }
+
+        system.assertEquals(expectedCountCY, troopAccount.Total_Girl_Membership__c);
+        system.assertEquals(expectedCountNY, troopAccount.NY_Total_Girl_Membership__c);
+        
+    }
+
+    private static void runInsertSingleAffliationIncrementTotalAdultsMembershipTest(
+        string troopName, string personAccountLastName, boolean incrementCounterCY, boolean incrementCounterNY,
+        boolean decrementCounterCY, boolean decrementCounterNY) {
+        PersonAndBusinessAccount personAndTroopAccount = retrievePersonAndTroopAccounts(
+            troopName, personAccountLastName);
+        
+        Affiliation__c affiliation = TestUtils.createAffiliation(
+            personAndTroopAccount.PersonAccount, personAndTroopAccount.BusinessAccount,
+            'Troop');
+        if(personAccountLastName == adultWithNoMembershipLastName){
+            setAffiliationStartDateEndDateForRenewalStatus(affiliation,'');
+            affiliation.Active__c = true;
+            affiliation.Not_Returning__c = false;
+        }
+        else{
+            setAffiliationStartDateEndDateForRenewalStatus(affiliation,'Expiring');
+            affiliation.Active__c = true;
+            affiliation.Not_Returning__c = false;
+        }
+        Test.startTest();
+        system.debug('affiliation::'+affiliation);
+            insert affiliation;
+        Test.stopTest();
+
+        assertTotalAdultMembership(personAndTroopAccount.BusinessAccount.Id, 
+            personAndTroopAccount.BusinessAccount, incrementCounterCY,incrementCounterNY,decrementCounterCY,decrementCounterNY);
+    }
+
+    private static void assertTotalAdultMembership(Id troopAccountId, Account currentTroop,
+        boolean incrementCounterCY,boolean incrementCounterNY,boolean decrementCounterCY,boolean decrementCounterNY) {
+        
+        system.debug('currentTroop :: ' +currentTroop);
+        Account troopAccount = [SELECT Id, Total_Girl_Membership__c, Total_Adult_Membership__c,
+                                NY_Total_Girl_Membership__c,NY_Total_Adult_Membership__c
+                                FROM Account
+                                WHERE Id =: troopAccountId
+                                LIMIT 1];
+
+        Decimal expectedCountCY = currentTroop.Total_Adult_Membership__c;
+        
+        if (expectedCountCY == null) {
+            expectedCountCY = 0;
+        }
+        if (incrementCounterCY) {
+            expectedCountCY++;
+        }
+        else if (decrementCounterCY) {
+            expectedCountCY--;
+        }
+
+        Decimal expectedCountNY = currentTroop.NY_Total_Adult_Membership__c;
+        if (expectedCountNY == null) {
+            expectedCountNY = 0;
+        }
+        if (incrementCounterNY) {
+            expectedCountNY++;
+        }
+        else if (decrementCounterNY) {
+            expectedCountNY--;
+        }
+
+        
+        system.assertEquals(expectedCountCY, troopAccount.Total_Adult_Membership__c);
+        //system.assertEquals(currentTroop.Total_Girl_Membership__c, troopAccount.Total_Girl_Membership__c);
+        system.assertEquals(expectedCountNY, troopAccount.NY_Total_Adult_Membership__c);
+        //system.assertEquals(currentTroop.NY_Total_Girl_Membership__c, troopAccount.NY_Total_Girl_Membership__c);
+    }
+
+    public static void setAffiliationStartDateEndDateForRenewalStatus(Affiliation__c affiliation,String RenewalStatus){
+        /*
+            private static Set<String> renewalStatusSetCY = new Set<String>{AffiliationRenewalStatuses.Renewed,
+                                                    AffiliationRenewalStatuses.Expiring,
+                                                    AffiliationRenewalStatuses.ExpiringNotReturning,
+                                                    AffiliationRenewalStatuses.ExpiredHoldSpot};
+    
+    private static Set<String> renewalStatusSetNY = new Set<String>{AffiliationRenewalStatuses.Renewed,
+                                                                AffiliationRenewalStatuses.Expiring,
+                                                                AffiliationRenewalStatuses.Pending,
+                                                                AffiliationRenewalStatuses.ExpiredHoldSpot};
+
+        */
+        if(RenewalStatus == 'Pending'){
+            if(System.today()< date.newInstance(System.today().year(), 10, 01)){
+                affiliation.Start_Date__c = date.newInstance( System.today().year() ,10,01 );
+                affiliation.End_Date__c = date.newInstance( System.today().year()+1,09,30 );
+            }
+            else{
+                affiliation.Start_Date__c = date.newInstance( System.today().year()+1,10,01 );
+                affiliation.End_Date__c = date.newInstance( System.today().year()+2,09,30 );
+            }
+        }
+        else if(RenewalStatus == 'Expiring'){
+            if(System.today()< date.newInstance(System.today().year(), 10, 01)){
+                affiliation.Start_Date__c = date.newInstance( System.today().year()-1 ,10,01 );
+                affiliation.End_Date__c = date.newInstance( System.today().year(),09,30 );
+            }
+            else{
+                affiliation.Start_Date__c = date.newInstance( System.today().year(),10,01 );
+                affiliation.End_Date__c = date.newInstance( System.today().year()+1,09,30 );
+            }
+        }
+        else if(RenewalStatus == 'Renewed'){
+            if(System.today()< date.newInstance(System.today().year(), 10, 01)){
+                affiliation.Start_Date__c = date.newInstance( System.today().year()-1 ,10,01 );
+                affiliation.End_Date__c = date.newInstance( System.today().year(),09,30 );
+            }
+            else{
+                affiliation.Start_Date__c = date.newInstance( System.today().year(),10,01 );
+                affiliation.End_Date__c = date.newInstance( System.today().year()+1,09,30 );
+            }
+        }
+        else if(RenewalStatus == ''){
+            if(System.today()< date.newInstance(System.today().year(), 10, 01)){
+                affiliation.Start_Date__c = date.newInstance( System.today().year()-1 ,10,01 );
+                affiliation.End_Date__c = null;
+            }
+            else{
+                affiliation.Start_Date__c = date.newInstance( System.today().year(),10,01 );
+                affiliation.End_Date__c = null;
+            }
+        }
+        else if(RenewalStatus == 'Expired'){
+            if(System.today()< date.newInstance(System.today().year(), 10, 01)){
+                affiliation.Start_Date__c = date.newInstance( System.today().year()-2 ,10,01 );
+                affiliation.End_Date__c = date.newInstance( System.today().year()-1 ,09,30 );
+            }
+            else{
+                affiliation.Start_Date__c = date.newInstance( System.today().year()-1,10,01 );
+                affiliation.End_Date__c = date.newInstance( System.today().year(),09,30 );
+            }
+        }
+
+    }
+
+    private class PersonAndBusinessAccount
+    {
+        public Account PersonAccount {get; set;}
+        public Account BusinessAccount {get; set;}
+    }
+    
+    private class AdultAndHouseholdAccount
+    {
+    	public Account AdultPersonAccount {get; set;}
+        public Account HouseholdAccount {get; set;}    
+    }
+}
